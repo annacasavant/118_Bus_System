@@ -4,4 +4,4 @@ include("Scripts-and-Data/define_time_series.jl");
 include("Scripts-and-Data/define_RT_loads.jl");
 include("Scripts-and-Data/define_RT_gens.jl");
 
-system
+sys_RT
