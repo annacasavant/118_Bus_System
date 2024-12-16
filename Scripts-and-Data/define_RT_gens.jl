@@ -31,6 +31,7 @@ solar_RT_gens = []
 for i in 1:75
 	num = lpad(i, 3, '0')
     local bus_solar = parse(Int, solar_gens[i, "bus of connection"][4:6])
+    
     local solar = RenewableDispatch(;
         name = "solar$num",
         available = true,
@@ -39,10 +40,10 @@ for i in 1:75
         reactive_power = 0,
         rating = 0.0,
         prime_mover_type = PrimeMovers.PVe,
-        reactive_power_limits = (min = 0.0, max = 0.05),
+        reactive_power_limits = (min = 0.0, max = 0.0),
         power_factor = 1.0,
         operation_cost = RenewableGenerationCost(nothing),
-        base_power = 0.00
+        base_power = 100
         )
     add_component!(sys_RT, solar)
 	add_time_series!(sys_RT, solar, solar_RT_TS[i])
@@ -62,10 +63,10 @@ for i in 1:17
         reactive_power = 0,
         rating = 0.0,
         prime_mover_type = PrimeMovers.WT,
-        reactive_power_limits = (min = 0.0, max = 0.05),
+        reactive_power_limits = (min = 0.0, max = 0.0),
         power_factor = 1.0,
         operation_cost = RenewableGenerationCost(nothing),
-        base_power = 0.00
+        base_power = 100
         )
     add_component!(sys_RT, wind)
 	add_time_series!(sys_RT, wind, wind_RT_TS[i])
@@ -95,11 +96,11 @@ for i in 1:43
         reactive_power = 0,
         rating = 0.0,
         prime_mover_type = PrimeMovers.HA,
-        active_power_limits = (min = 0.0, max = 0.05),
-        reactive_power_limits = (min = 0.0, max = 0.05),
+        active_power_limits = (min = hydro_gens[i, "Min Stable Level (MW)"]/100, max = hydro_gens[i, "Max Capacity (MW)"]/100),
+        reactive_power_limits = (min = 0.0, max = 0.0),
         ramp_limits = (up = hydro_gens[i, "Max Ramp Up (MW/min)"], down = hydro_gens[i, "Max Ramp Down (MW/min)"]),
         time_limits = (up = hydro_gens[i,"Min Up Time (h)" ], down = hydro_gens[i, "Min Down Time (h)"]),
-        base_power = 0.00,
+        base_power = 100,
         operation_cost = HydroGenerationCost(nothing)
         )
     add_component!(sys_RT, hydro)

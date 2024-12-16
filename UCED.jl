@@ -1,6 +1,6 @@
+
 using PowerSystems
 using PowerSimulations
-const PSI = PowerSimulations
 using Dates
 using CSV
 using HydroPowerSimulations
@@ -9,7 +9,6 @@ using Logging
 using TimeSeries
 using HiGHS #solver
 using PowerNetworkMatrices
-const PNM = PowerNetworkMatrices
 using Xpress
 
 mip_gap = 0.01
@@ -33,7 +32,8 @@ optimizer = optimizer_with_attributes(
 
 
                 
-template_uc = template_unit_commitment()
+template_uc = template_unit_commitment(;
+network = NetworkModel(CopperPlatePowerModel; duals =[CopperPlateBalanceConstraint],  use_slacks = true))
 set_device_model!(template_uc, ThermalStandard, ThermalBasicUnitCommitment)
 set_device_model!(template_uc, RenewableDispatch, FixedOutput, ) 
 set_device_model!(template_uc, PowerLoad, StaticPowerLoad)
@@ -100,7 +100,7 @@ DA_sequence = SimulationSequence(;
 )
 
 initial_date = "2023-01-01"
-steps_sim    = 7
+steps_sim    = 30
 current_date = string( today() )
 sim = Simulation(
     name = current_date * "_DR-test" * "_" * string(steps_sim)* "steps",
@@ -111,11 +111,9 @@ sim = Simulation(
     simulation_folder = tempdir()#".",
 )
 
-
 build!(sim)
 execute!(sim)
 
+ 
 
-# results = SimulationResults(sim)
-# ed_results = get_decision_problem_results(results, "RT")
-# read_realized_duals(ed_results)
+
