@@ -14,7 +14,7 @@ bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
 
 # Defining all the buses 
 
-buses = []
+#buses = []
 for i in 1:118
     num = lpad(i, 3, '0')
     min_volt = bus_params[i, "Voltage-Min (pu)"]
@@ -43,11 +43,10 @@ for i in 1:118
         voltage_limits = (min = min_volt, max = max_volt),
         base_voltage = base_volt,
     )
+	end
  add_component!(sys_DA, bus)
  add_component!(sys_RT, bus)
- push!(buses, bus)  
-    end
+ #push!(buses, bus)  
 end
-
 
 buses = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
