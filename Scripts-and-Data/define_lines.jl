@@ -9,9 +9,7 @@ using DataFrames
 line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 
 # Defining all the lines
-# not using Max Flow or Min Flow (both in MW in csv)
-
-lines = []
+# not using Min Flow (both in MW in csv)
 
 for i in 1:186
     num = lpad(i, 3, '0')
@@ -23,7 +21,7 @@ for i in 1:186
             available = true,
             active_power_flow = 0.0,
             reactive_power_flow = 0.0,
-            arc = Arc(; from = buses[bus_from], to = buses[bus_to]),
+            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
             r = line_params[i, 7],
             x = line_params[i, 6],
             b = (from = 0.0, to = 0.0),
@@ -38,7 +36,7 @@ for i in 1:186
             available = true,
             active_power_flow = 0.0,
             reactive_power_flow = 0.0,
-            arc = Arc(; from = buses[bus_from], to = buses[bus_to]),
+            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
             r = line_params[i, 7],
             x = line_params[i, 6],
             primary_shunt = 0.0,
