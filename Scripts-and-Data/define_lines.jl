@@ -11,10 +11,10 @@ line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 # Defining all the lines
 # not using Min Flow (both in MW in csv)
 
-for i in 1:186
-    num = lpad(i, 3, '0')
-    bus_from = parse(Int, line_params[i, "Bus from "][4:6])
-    bus_to = parse(Int, line_params[i, "Bus to"][4:6])
+for row in eachrow(line_params) 
+    num = lpad(rownumber(row), 3, '0')
+    bus_from = parse(Int, row["Bus from "][4:6])
+    bus_to = parse(Int, row["Bus to"][4:6])
     if bus_params[bus_to, "Base Voltage kV"] == bus_params[bus_from, "Base Voltage kV"]
         local line = Line(;
             name = "line$num",
@@ -22,10 +22,10 @@ for i in 1:186
             active_power_flow = 0.0,
             reactive_power_flow = 0.0,
             arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = line_params[i, 7],
-            x = line_params[i, 6],
+            r = row["Resistance (p.u.)"],
+            x = row["Reactance (p.u.)"],
             b = (from = 0.0, to = 0.0),
-            rating = line_params[i, "Max Flow (MW)"]/100,
+            rating = row["Max Flow (MW)"]/100,
             angle_limits = (min = 0.0, max = 0.0),
         );
         add_component!(sys_DA, line)
@@ -37,10 +37,10 @@ for i in 1:186
             active_power_flow = 0.0,
             reactive_power_flow = 0.0,
             arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = line_params[i, 7],
-            x = line_params[i, 6],
+            r = row["Resistance (p.u.)"],
+            x = row["Reactance (p.u.)"],
             primary_shunt = 0.0,
-            rating = line_params[i, "Max Flow (MW)"]/100,
+            rating = row["Max Flow (MW)"]/100,
         );
         add_component!(sys_DA, tline)
 		add_component!(sys_RT, tline)

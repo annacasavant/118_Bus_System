@@ -11,14 +11,20 @@ sys_DA= System(100.0) #assuming base power 100MVA per-unitization
 sys_RT = System(100.0) #assuming base power 100MVA per-unitization
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
 
+# defining column names as variables
+BUS_NUM_COL = "Number"
+MIN_VOLT_COL = "Voltage-Min (pu)"
+MAX_VOLT_COL = "Voltage-Max (pu)"
+BASE_VOLT_COL = "Base Voltage kV"
+
 # Defining all the buses 
 
 for row in eachrow(bus_params)
-    num = lpad(row["Number"], 3, '0')
-    min_volt = row["Voltage-Min (pu)"]
-    max_volt = row["Voltage-Max (pu)"]
-    base_volt = row["Base Voltage kV"]
-    if row["Number"] == 69
+    num = lpad(row[BUS_NUM_COL], 3, '0')
+    min_volt = row[MIN_VOLT_COL]
+    max_volt = row[MAX_VOLT_COL]
+    base_volt = row[BASE_VOLT_COL]
+    if row[BUS_NUM_COL] == 69
     	bus = ACBus(;
            number = parse(Int64, num),
            name = "bus$num",
