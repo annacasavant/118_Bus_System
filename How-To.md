@@ -1,17 +1,19 @@
 # Building a System with Real Time and Forecast
 
 ### Dependencies
-```@repl system 
+```@hide
 using PowerSystems 
 using CSV
 using DataFrames
 ```
 ### Build the base of the system with appropriate base power. 
+Begin by building the base system using the base power. 
 
 ```@repl system 
 sys = System(100)
 ```
 ### Read in all component data 
+Read in the CSV files that contain the data for building the system. In this example, the line, bus and generator data are found in the following CSV files. 
 ```@repl system 
 line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
@@ -19,16 +21,21 @@ gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
 ```
 
 ### Build the buses - parsing data from `bus_params`
-
+The first building block are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. 
 ```@repl system 
+min_voltage_col_name = "Voltage-Min (pu)"
+max_voltage_col_name = "Voltage-Max (pu)"
+base_voltage_col_name = "Base Voltage"
+```
+```@repl system
 buses = []
-for i in 1:118
-    num = lpad(i, 3, '0') 
-    min_volt = bus_params[i, "Voltage-Min (pu)"] 
-    max_volt = bus_params[i, "Voltage-Max (pu)"]
-    base_volt = bus_params[i, "Base Voltage kV"]
+for row in eachrow(bus_params)
+    #num =  lpad(string(row, 3, '0'))
+    min_volt = row[:min_voltage_col_name]     
+    max_volt = row[:max_voltage_col_name]
+    base_volt = row[:base_voltage_col_name]
     bus = ACBus(;
-           number = i,
+           number = row[:number],
            name = "bus$num",
            bustype = ACBusTypes.PQ,
            angle = 0.0,
@@ -37,6 +44,7 @@ for i in 1:118
            base_voltage = base_volt,
        )
     add_component!(sys, bus)
+end
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
@@ -270,6 +278,8 @@ for i in length(hydro_with_budgets)
 end
 ```
 
+
+### 
 
 
 
