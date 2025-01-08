@@ -8,7 +8,7 @@ using TimeSeries
 
 # Time Stamps: 
 # since csv is messed up, assuming values go with time in order, not how presented
-# changed year to 2023 so data skips leap day and ends on 1/1/25 of next year 
+# changed year to 2023 so data skips leap day and ends on 1/1/24 of next year 
 # year is arbitrary since data is synthetic anyways
 
 resolution = Dates.Hour(1);
@@ -28,18 +28,18 @@ months = []
 values = []
 hydro_num = []
 
-for i in 1:length(hydro1_15[:, 1])
-	if hydro1_15[i, 11] !== missing && hydro1_15[i, 4] == "Max Energy Month"
-		push!(months, lpad(hydro1_15[i, 11][2:end], 2, '0'))
-		push!(values, parse(Float64, hydro1_15[i, 5]))
-		push!(hydro_num, hydro1_15[i, 3])
+for row in eachrow(hydro1_15)
+	if row[11] !== missing && row[4] == "Max Energy Month"
+		push!(months, lpad(row[11][2:end], 2, '0'))
+		push!(values, parse(Float64, row[5]))
+		push!(hydro_num, row[3])
 	end
 end
 
-for i in 1:48
-	push!(months, lpad(hydro36_39[i, 8][2:end], 2, '0')) 
-	push!(values, hydro36_39[i, 3])
-	push!(hydro_num, hydro36_39[i, 1])
+for row in eachrow(hydro36_39)
+	push!(months, lpad(row[8][2:end], 2, '0')) 
+	push!(values, row[3])
+	push!(hydro_num, row[1])
 end
 
 hydrobg = sort(DataFrame(Hydro=hydro_num, Month=months, Value=values), [:1, :2])
@@ -96,8 +96,8 @@ end
 # loads: -------------------------
 load_RT_TS = []
 
-for i in 1:3
-	local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
+for file in readdir("Scripts-and-Data/TimeSeries/RT/Load/")
+	local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/$file", DataFrame)
 	local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
 	local load_TS = SingleTimeSeries(;
            name = "max_active_power",
