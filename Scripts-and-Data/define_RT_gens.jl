@@ -31,14 +31,14 @@ solar_RT_gens = []
 for i in 1:75
 	num = lpad(i, 3, '0')
     local bus_solar = parse(Int, solar_gens[i, "bus of connection"][4:6])
-    
+    local rate = gen_params[i, "Max Capacity (MW)"]
     local solar = RenewableDispatch(;
         name = "solar$num",
         available = true,
         bus = buses[bus_solar],
         active_power = 0.0,
         reactive_power = 0,
-        rating = 0.0,
+        rating = rate,
         prime_mover_type = PrimeMovers.PVe,
         reactive_power_limits = (min = 0.0, max = 0.0),
         power_factor = 1.0,
@@ -55,13 +55,14 @@ wind_RT_gens = []
 for i in 1:17
 	num = lpad(i, 3, '0')
     local bus_wind = parse(Int, wind_gens[i, "bus of connection"][4:6])
+    local rate = gen_params[i, "Max Capacity (MW)"]
     local wind = RenewableDispatch(;
         name = "wind$num",
         available = true,
         bus = buses[bus_wind],
         active_power = 0.0,
         reactive_power = 0,
-        rating = 0.0,
+        rating = rate,
         prime_mover_type = PrimeMovers.WT,
         reactive_power_limits = (min = 0.0, max = 0.0),
         power_factor = 1.0,
@@ -94,7 +95,7 @@ for i in 1:43
         bus = buses[bus_hydro],
         active_power = 0.0,
         reactive_power = 0,
-        rating = 0.0,
+        rating = nothing,
         prime_mover_type = PrimeMovers.HA,
         active_power_limits = (min = hydro_gens[i, "Min Stable Level (MW)"]/100, max = hydro_gens[i, "Max Capacity (MW)"]/100),
         reactive_power_limits = (min = 0.0, max = 0.0),
