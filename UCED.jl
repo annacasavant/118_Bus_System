@@ -201,7 +201,3 @@ results = SimulationResults(sim)
 #     CSV.write(file_name, df)
 # end
 
-# results_2 = SimulationResults(sim)
-# ed_results2 = get_decision_problem_results(results2, "RT")
-# LMP_ed2 = read_realized_duals(ed_results2)
-# CSV.write("C:\\Users\\acasavan\\118 Bus Data\\ed_LMP2.csv", ed_LMP_data2)
