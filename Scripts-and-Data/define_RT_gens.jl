@@ -79,6 +79,8 @@ end
 ren_gens = collect(get_components(RenewableDispatch, sys_RT))
 for i in 1:92
     cost_curve = zero(CostCurve)
+    #value_curve = LinearCurve(0, .275)
+    #curtailment_cost = CostCurve(value_curve)
     cost_ren = RenewableGenerationCost(cost_curve)
     ren_gen = ren_gens[i]
     set_operation_cost!(ren_gen, cost_ren)
@@ -95,7 +97,7 @@ for i in 1:43
         bus = buses[bus_hydro],
         active_power = 0.0,
         reactive_power = 0,
-        rating = nothing,
+        rating = 0,
         prime_mover_type = PrimeMovers.HA,
         active_power_limits = (min = hydro_gens[i, "Min Stable Level (MW)"]/100, max = hydro_gens[i, "Max Capacity (MW)"]/100),
         reactive_power_limits = (min = 0.0, max = 0.0),

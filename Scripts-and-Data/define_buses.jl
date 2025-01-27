@@ -1,4 +1,4 @@
-#!/usr/bin/env julia
+
 
 using PowerSystems
 using CSV

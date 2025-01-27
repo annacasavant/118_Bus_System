@@ -10,7 +10,7 @@ using TimeSeries
 using HiGHS #solver
 using PowerNetworkMatrices
 using Xpress
-using PowerGraphics
+#using PowerGraphics
 mip_gap = 0.01
 
 ## Transform DA into Deterministic from SingleTimeSeries
@@ -100,7 +100,7 @@ DA_sequence = SimulationSequence(;
 )
 
 initial_date = "2023-01-01"
-steps_sim    = 100
+steps_sim    = 365
 current_date = string( today() )
 sim = Simulation(
     name = current_date * "_DR-test" * "_" * string(steps_sim)* "steps",
@@ -112,9 +112,9 @@ sim = Simulation(
 )
 
 build!(sim)
-execute!(sim)
+# execute!(sim)
 #---------------------------------------------------------------------------
-results = SimulationResults(sim)
+# results = SimulationResults(sim)
 # ed_results = get_decision_problem_results(results, "RT")
 # uc_results = get_decision_problem_results(results, "DA")
 # LMP_ed = read_realized_duals(ed_results)
@@ -201,3 +201,10 @@ results = SimulationResults(sim)
 #     CSV.write(file_name, df)
 # end
 
+# ed = read_parameters(ed_results)
+# ed_vre = ed["ActivePowerTimeSeriesParameter__RenewableDispatch"]
+# for (key, df) in ed_vre
+#     formatted_key = replace(string(key), ":" => "-")
+#     file_name = "C:\\Users\\acasavan\\118 Bus Data\\ed_vre\\$(formatted_key).csv"
+#     CSV.write(file_name, df)
+# end
