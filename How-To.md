@@ -6,14 +6,17 @@ using PowerSystems
 using CSV
 using DataFrames
 ```
+
 ### Build the base of the system with appropriate base power. 
 Begin by building the base system using the base power. 
 
 ```@repl system 
 sys = System(100)
 ```
+
 ### Read in all component data 
 Read in the CSV files that contain the data for building the system. In this example, the line, bus and generator data are found in the following CSV files. 
+
 ```@repl system 
 line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
@@ -22,15 +25,17 @@ gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
 
 ### Build the buses - parsing data from `bus_params`
 The first building block are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. 
+
 ```@repl system 
 min_voltage_col_name = "Voltage-Min (pu)"
 max_voltage_col_name = "Voltage-Max (pu)"
 base_voltage_col_name = "Base Voltage"
 ```
+
 ```@repl system
 buses = []
 for row in eachrow(bus_params)
-    #num =  lpad(string(row, 3, '0'))
+    num =  lpad(string(row, 3, '0'))
     min_volt = row[:min_voltage_col_name]     
     max_volt = row[:max_voltage_col_name]
     base_volt = row[:base_voltage_col_name]
@@ -45,43 +50,133 @@ for row in eachrow(bus_params)
        )
     add_component!(sys, bus)
 end
+buses = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
 
-```@repl system 
+```@repl system
+bus_from_col = "Bus from "
+bus_to_col = "Bus to" 
+resistance_col = "Resistance (p.u.)"
+reactance_col = "Reactance (p.u.)"
+max_flow_col = "Max Flow (MW)"
+
 for i in length(lines)
+	num =  lpad(string(row, 3, '0'))
+	bus_from = parse(Int, row[bus_from_col][4:6])
+    bus_to = parse(Int, row[bus_to_col][4:6])	
     if # voltage at connecting ends is the same - build a line
         local line = Line(;
-            name = # name
+            name = "branch$num"
             available = true,
             active_power_flow = # parsed data,
             reactive_power_flow = # parsed data,
-            arc = # parsed data,
-            r = # parsed data,
-            x = # parsed data,
+            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
+            r = row[resistance_col],
+            x = row[reactance_col],
             b = # parsed data,
-            rating = # parsed data,,
+            rating = row[max_flow_col]/100,
             angle_limits = # parsed data,
         );
         add_component!(sys, line)
     else # voltage at connecting ends is different - build a transformer
         local tline = Transformer2W(;
-            name = # name 
+            name = "branch$num"
             available = true,
             active_power_flow = # parsed data,
             reactive_power_flow = # parsed data,
-            arc = # parsed data,
-            r = # parsed data,
-            x = # parsed data,
+            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
+            r = row[resistance_col],
+            x = row[reactance_col],
             primary_shunt = # parsed data,
-            rating = # parsed data,
+            rating = row[max_flow_col]/100,
         );
         add_component!(sys, tline)
     end
 end
 ```
 
+# Reading in Time Series Data
+
+### Establishing resolution of time series
+
+```@repl system
+resolution = Dates.Hour(1);
+timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
+gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
+```
+
+### Reading in Solar Time Series
+
+```@repl system 
+solar_RT_TS = []
+
+for i in length(solar_generator)
+	solardf = CSV.read("Scripts-and-Data/TimeSeries/RT/Solar/Solar$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(solardf[:, 2])
+	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)) # normalize data 
+	solar_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = solar_array,
+		   scaling_factor_multiplier = get_max_active_power, # max active power
+       );
+	push!(solar_RT_TS, solar_TS);
+end
+```
+
+### Reading in Wind Time Series
+
+```@repl system 
+wind_RT_TS = []
+
+for i in length(wind_generator)
+	winddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Wind/Wind$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(winddf[:, 2])
+	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)) # normalize data 
+	wind_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = wind_array,
+		   scaling_factor_multiplier = # max active power 
+       );
+	push!(wind_RT_TS, wind_TS);
+end
+```
+
+### Reading in Load Time Series
+
+```@repl system
+load_RT_TS = []
+
+for i in 1:3
+    local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
+    local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
+    local load_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = load_array,
+           scaling_factor_multiplier = get_max_active_power, #assumption?
+       );
+    push!(load_RT_TS, load_TS);
+end
+```
+
+### Reading in Hydro Time Series 
+
+```@repl system 
+hydro_RT_TS = []
+
+for i in length(hydro_generator)
+	hydrodf = CSV.read("Scripts-and-Data/TimeSeries/RT/Hydro/Hydro$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(hydrodf[:, 2])
+	hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./norm)) # normalize data 
+	hydro_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = hydro_array,
+		   scaling_factor_multiplier = get_max_active_power, # max active power
+       );
+	push!(hydro_RT_TS, hydro_TS);
+end
+```
 
 # Building Generator Components
 ### Build thermal generators - parsing data from `gen_params`
@@ -221,62 +316,6 @@ end
 ```
 For more information regarding thermal cost functions please visit [ThermalGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/thermal_generation_cost/). 
 
-
-# Reading in Time Series Data 
-
-### Reading in Solar Time Series
-```@repl system 
-for i in length(solar_generator)
-	solardf = CSV.read("Scripts-and-Data/TimeSeries/DA/Solar/Solar$(i)DA.csv", DataFrame) # read in data 
-	norm = # Max value in time series 
-	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)) # normalize data 
-	solar_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = solar_array,
-		   scaling_factor_multiplier = get_max_active_power, # max active power
-       );
-end
-```
-
-### Reading in Wind Time Series
-
-```@repl system 
-for i in length(wind_generator)
-	winddf = CSV.read("Scripts-and-Data/TimeSeries/DA/Wind/Wind$(i)DA.csv", DataFrame) # read in data 
-	norm = # Max value in time series
-	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)) # normalize data 
-	wind_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = wind_array,
-		   scaling_factor_multiplier = # max active power 
-       );
-end
-```
-
-### Reading in Hydro Time Series 
-
-#### With Hourly Data 
-
-#### With Monthly Budgets 
-
-```@repl system 
-time_series_list = []
-daysofmonth = [31,28,31,30,31,30,31,31,30,31,30,32]
-```
-```@repl system 
-for i in length(hydro_with_budgets)
-	time_series = []
-	for row in eachrow(hydrobg[12i-11:12i, :])
-		local month = # month
-		for j in 1:daysofmonth[month]
-			for k in 1:24
-				push!(time_series, row[3]/(24*daysofmonth[month])) # create hourly data from monthly budget
-			end
-		end
-	end
-	push!(time_series_list, (time_series./maximum(time_series))) # normalize data 
-end
-```
 
 
 ### 
