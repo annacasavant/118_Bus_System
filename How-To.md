@@ -107,15 +107,20 @@ timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 
 gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
 ```
 
+The following time series are hourly for the year 2023, meaning there are 8784 data points, or one
+time stamp for each hour, the resolution, of the year. The following steps are how to add these time
+series data to renewable generators. 
+
 ### Reading in Solar Time Series
 
 ```@repl system 
 solar_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Solar"
 
 for i in length(solar_generator)
-	solardf = CSV.read("Scripts-and-Data/TimeSeries/RT/Solar/Solar$(i)RT.csv", DataFrame) # read in data 
+	solardf = CSV.read("$file_path/Solar$(i)RT.csv", DataFrame) # read in data 
 	norm = maximum(solardf[:, 2])
-	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)) # normalize data 
+	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100) # normalize and per-unitize data 
 	solar_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = solar_array,
@@ -129,11 +134,12 @@ end
 
 ```@repl system 
 wind_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Wind"
 
 for i in length(wind_generator)
-	winddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Wind/Wind$(i)RT.csv", DataFrame) # read in data 
+	winddf = CSV.read("$file_path/Wind$(i)RT.csv", DataFrame) # read in data 
 	norm = maximum(winddf[:, 2])
-	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)) # normalize data 
+	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100) # normalize and per-unitize data 
 	wind_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = wind_array,
@@ -143,7 +149,28 @@ for i in length(wind_generator)
 end
 ```
 
+### Reading in Hydro Time Series 
+
+```@repl system 
+hydro_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Hydro"
+
+for i in length(hydro_generator)
+	hydrodf = CSV.read("$file_path/Hydro$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(hydrodf[:, 2])
+	hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./norm)/100) # normalize and per-unitize data 
+	hydro_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = hydro_array,
+		   scaling_factor_multiplier = get_max_active_power, # max active power
+       );
+	push!(hydro_RT_TS, hydro_TS);
+end
+```
+
 ### Reading in Load Time Series
+If your time series data is defined by region as opposed to component, here is how you would create 
+those time series objects.
 
 ```@repl system
 load_RT_TS = []
@@ -157,24 +184,6 @@ for i in 1:3
            scaling_factor_multiplier = get_max_active_power, #assumption?
        );
     push!(load_RT_TS, load_TS);
-end
-```
-
-### Reading in Hydro Time Series 
-
-```@repl system 
-hydro_RT_TS = []
-
-for i in length(hydro_generator)
-	hydrodf = CSV.read("Scripts-and-Data/TimeSeries/RT/Hydro/Hydro$(i)RT.csv", DataFrame) # read in data 
-	norm = maximum(hydrodf[:, 2])
-	hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./norm)) # normalize data 
-	hydro_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = hydro_array,
-		   scaling_factor_multiplier = get_max_active_power, # max active power
-       );
-	push!(hydro_RT_TS, hydro_TS);
 end
 ```
 
@@ -221,6 +230,7 @@ for i in length(solar_generators)
         base_power = 100
         )
     add_component!(sys, solar)
+	add_time_series!(sys, solar, solar_RT_TS[i])
 ```
 
 ### Build wind generators - parsing data from `gen_params`
@@ -242,6 +252,7 @@ for i in length(wind_generators)
         base_power = 100
         )
     add_component!(sys, wind)
+	add_time_series!(sys, wind, wind_RT_TS[i])
 end
 ```
 ### Build hydro generators - parsing data from `gen_params` 
@@ -263,10 +274,93 @@ for i in length(hydro_generation)
         base_power = 100,
         operation_cost = HydroGenerationCost(nothing)
         )
-    add_component!(sys_DA, hydro)
-	push!(hydro_DA_RT_gens, hydro)
-	add_time_series!(sys_DA, hydro, hydro_DA_RT_TS[i])
+    add_component!(sys, hydro)
+	add_time_series!(sys, hydro, hydro_RT_TS[i])
 end
+```
+
+### Build hydro generators - parsing data from `gen_params` 
+
+This is how you would build loads if those loads were defined by region and not by generator.
+
+```@repl system
+file_path = "Scripts-and-Data/TimeSeries/RT/Load"
+
+R1RTdf = CSV.read("$file_path/LoadR1RT.csv", DataFrame);
+R2RTdf = CSV.read("$file_path/LoadR2RT.csv", DataFrame);
+R3RTdf = CSV.read("$file_path/LoadR3RT.csv", DataFrame);
+load_data = sort!(CSV.read("Scripts-and-Data/partfact.csv", DataFrame));
+
+load_region = "Region"
+factor = "Load Participation Factor"
+
+for i in 1:118
+    num = lpad(i, 3, '0')
+    if load_data[i, load_region] == 1
+        local max1 = maximum(R1RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max1)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    elseif load_data[i, load_region] == 2
+        local max2 = maximum(R2RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max2)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    else load_data[i, "load_region"] == 3
+        local max3 = maximum(R3RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max3)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    end
+end
+
+associations1 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[1],)
+    for load in loads_RT_R1
+)
+bulk_add_time_series!(sys, associations1)
+
+associations2 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[2],)
+    for load in loads_RT_R2
+)
+bulk_add_time_series!(sys, associations2)
+
+associations3 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[3],)
+    for load in loads_RT_R3
+)
+bulk_add_time_series!(sys, associations3)
 ```
 
 # Building `RenewableGenerationCost`, `HydroGenerationCost` and `ThermalGenerationCost` functions
