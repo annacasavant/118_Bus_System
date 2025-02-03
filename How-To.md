@@ -6,14 +6,17 @@ using PowerSystems
 using CSV
 using DataFrames
 ```
+
 ### Build the base of the system with appropriate base power. 
 Begin by building the base system using the base power. 
 
 ```@repl system 
 sys = System(100)
 ```
+
 ### Read in all component data 
 Read in the CSV files that contain the data for building the system. In this example, the line, bus and generator data are found in the following CSV files. 
+
 ```@repl system 
 line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
@@ -21,16 +24,18 @@ gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
 ```
 
 ### Build the buses - parsing data from `bus_params`
-The first building blocks are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. In this example we are defining the minimum voltage, maximum voltage and base voltage. 
+The first building block are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. 
+
 ```@repl system 
 min_voltage_col_name = "Voltage-Min (pu)"
 max_voltage_col_name = "Voltage-Max (pu)"
 base_voltage_col_name = "Base Voltage"
 ```
+
 ```@repl system
 buses = []
 for row in eachrow(bus_params)
-    #num =  lpad(string(row, 3, '0'))
+    num =  lpad(string(row, 3, '0'))
     min_volt = row[:min_voltage_col_name]     
     max_volt = row[:max_voltage_col_name]
     base_volt = row[:base_voltage_col_name]
@@ -45,6 +50,7 @@ for row in eachrow(bus_params)
        )
     add_component!(sys, bus)
 end
+buses = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
@@ -60,36 +66,42 @@ max_flow = "Max Flow (MW)"
 min_flow = "Min Flow (MW)"
 ```
 
-```@repl system 
-for row in eachrow(line_params) 
-    num = lpad(rownumber(row), 3, '0')
-    bus_from = parse(Int, row[bus_from][4:6])
-    bus_to = parse(Int, row[bus_to][4:6])
-    if bus_params[bus_to, base_voltage_col_name] == bus_params[bus_from, base_voltage_col_name] #if the base voltage of buses being connected are the same, build a line
+```@repl system
+bus_from_col = "Bus from "
+bus_to_col = "Bus to" 
+resistance_col = "Resistance (p.u.)"
+reactance_col = "Reactance (p.u.)"
+max_flow_col = "Max Flow (MW)"
+
+for i in length(lines)
+	num =  lpad(string(row, 3, '0'))
+	bus_from = parse(Int, row[bus_from_col][4:6])
+    bus_to = parse(Int, row[bus_to_col][4:6])	
+    if # voltage at connecting ends is the same - build a line
         local line = Line(;
-            name = "line$num",
+            name = "branch$num"
             available = true,
-            active_power_flow = 0.0,
-            reactive_power_flow = 0.0,
+            active_power_flow = # parsed data,
+            reactive_power_flow = # parsed data,
             arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = row[resistance],
-            x = row[reactance],
-            b = (from = 0.0, to = 0.0),
-            rating = row[max_flow]/100,
-            angle_limits = (min = 0.0, max = 0.0),
+            r = row[resistance_col],
+            x = row[reactance_col],
+            b = # parsed data,
+            rating = row[max_flow_col]/100,
+            angle_limits = # parsed data,
         );
         add_component!(sys, line)
     else # if the base voltages of the connecting buses do not match build a transformer
         local tline = Transformer2W(;
-            name = "line$num",
+            name = "branch$num"
             available = true,
-            active_power_flow = 0.0,
-            reactive_power_flow = 0.0,
+            active_power_flow = # parsed data,
+            reactive_power_flow = # parsed data,
             arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = row[resistance],
-            x = row[reactance],
-            primary_shunt = 0.0,
-            rating = row[max_flow]/100,
+            r = row[resistance_col],
+            x = row[reactance_col],
+            primary_shunt = # parsed data,
+            rating = row[max_flow_col]/100,
         );
 		add_component!(sys, tline)
     end
@@ -97,6 +109,7 @@ end
 ```
 
 # Reading in Time Series Data
+
 ### Establishing resolution of time series
 
 ```@repl system
@@ -104,6 +117,7 @@ resolution = Dates.Hour(1);
 timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
 gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
 ```
+
 The following time series are hourly for the year 2023, meaning there are 8784 data points, or one
 time stamp for each hour, the resolution, of the year. The following steps are how to add these time
 series data to renewable generators. 
@@ -165,6 +179,10 @@ for i in length(hydro_generator)
 end
 ```
 
+### Reading in Load Time Series
+If your time series data is defined by region as opposed to component, here is how you would create 
+those time series objects.
+
 ```@repl system
 load_RT_TS = []
 
@@ -178,6 +196,7 @@ for i in 1:3
        );
     push!(load_RT_TS, load_TS);
 end
+```
 
 # Building Generator Components
 The generator data is stored in the `gen_params` dataframe. In this step we are creating dataframes characterized by the generator type because thermal generators, hydro generators and renewable generators are different types of components, and therefore built differently. 
@@ -256,6 +275,7 @@ bus = row[bus_connection]
         base_power = 100
         )
     add_component!(sys, solar)
+	add_time_series!(sys, solar, solar_RT_TS[i])
 ```
 
 ### Build wind generators - parsing data from the `wind_gens` data frame
@@ -277,6 +297,7 @@ for row in eachrow(wind_gens)
         base_power = 100
         )
     add_component!(sys, wind)
+	add_time_series!(sys, wind, wind_RT_TS[i])
 end
 ```
 ### Build hydro generators - parsing data from the `hydro_gens` data frame 
@@ -298,8 +319,93 @@ for row in eachrow(hydro_gens)
         base_power = 100,
         operation_cost = HydroGenerationCost(nothing)
         )
-    add_component!(sys_DA, hydro)
+    add_component!(sys, hydro)
+	add_time_series!(sys, hydro, hydro_RT_TS[i])
 end
+```
+
+### Build hydro generators - parsing data from `gen_params` 
+
+This is how you would build loads if those loads were defined by region and not by generator.
+
+```@repl system
+file_path = "Scripts-and-Data/TimeSeries/RT/Load"
+
+R1RTdf = CSV.read("$file_path/LoadR1RT.csv", DataFrame);
+R2RTdf = CSV.read("$file_path/LoadR2RT.csv", DataFrame);
+R3RTdf = CSV.read("$file_path/LoadR3RT.csv", DataFrame);
+load_data = sort!(CSV.read("Scripts-and-Data/partfact.csv", DataFrame));
+
+load_region = "Region"
+factor = "Load Participation Factor"
+
+for i in 1:118
+    num = lpad(i, 3, '0')
+    if load_data[i, load_region] == 1
+        local max1 = maximum(R1RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max1)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    elseif load_data[i, load_region] == 2
+        local max2 = maximum(R2RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max2)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    else load_data[i, "load_region"] == 3
+        local max3 = maximum(R3RTdf[:, 2])
+        local load = PowerLoad(;
+            name = "load$num",
+            available = true,
+            bus = buses[i],
+            active_power = 0.0, #per-unitized by device base_power
+            reactive_power = 0.0, #per-unitized by device base_power
+            base_power = 100.0, # MVA, for loads match system
+            max_active_power = (max3)*(load_data[i, "factor"])/100, #per-unitized by device base_power
+            max_reactive_power = 0.0,
+        );
+        add_component!(sys, load)
+    end
+end
+
+associations1 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[1],)
+    for load in loads_RT_R1
+)
+bulk_add_time_series!(sys, associations1)
+
+associations2 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[2],)
+    for load in loads_RT_R2
+)
+bulk_add_time_series!(sys, associations2)
+
+associations3 = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[3],)
+    for load in loads_RT_R3
+)
+bulk_add_time_series!(sys, associations3)
 ```
 
 # Building `RenewableGenerationCost`, `HydroGenerationCost` and `ThermalGenerationCost` functions
@@ -404,5 +510,11 @@ for row in eachrow(thermal_gens)
 end
 ```
 For more information regarding thermal cost functions please visit [ThermalGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/thermal_generation_cost/). 
+
+
+
+### 
+
+
 
 

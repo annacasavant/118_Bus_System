@@ -96,8 +96,8 @@ end
 # loads: -------------------------
 load_RT_TS = []
 
-for file in readdir("Scripts-and-Data/TimeSeries/RT/Load/")
-	local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/$file", DataFrame)
+for i in 1:3
+	local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
 	local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
 	local load_TS = SingleTimeSeries(;
            name = "max_active_power",
