@@ -35,7 +35,7 @@ for i in 1:75
     local solar = RenewableDispatch(;
         name = "solar$num",
         available = true,
-        bus = buses[bus_solar],
+        bus = buses_RT[bus_solar],
         active_power = 0.0,
         reactive_power = 0,
         rating = rate,
@@ -59,7 +59,7 @@ for i in 1:17
     local wind = RenewableDispatch(;
         name = "wind$num",
         available = true,
-        bus = buses[bus_wind],
+        bus = buses_RT[bus_wind],
         active_power = 0.0,
         reactive_power = 0,
         rating = rate,
@@ -79,8 +79,8 @@ end
 ren_gens = collect(get_components(RenewableDispatch, sys_RT))
 for i in 1:92
     cost_curve = zero(CostCurve)
-    #value_curve = LinearCurve(0, .275)
-    #curtailment_cost = CostCurve(value_curve)
+    value_curve = LinearCurve(0, .275)
+    curtailment_cost = CostCurve(value_curve)
     cost_ren = RenewableGenerationCost(cost_curve)
     ren_gen = ren_gens[i]
     set_operation_cost!(ren_gen, cost_ren)
@@ -94,7 +94,7 @@ for i in 1:43
     local hydro = HydroDispatch(;
         name = "hydro$num",
         available = true,
-        bus = buses[bus_hydro],
+        bus = buses_RT[bus_hydro],
         active_power = 0.0,
         reactive_power = 0,
         rating = 0,
@@ -284,11 +284,11 @@ for i in 1:192
             name = thermal_gens[i, "Generator Name"],
             available = true,
             status = true,
-            bus = buses[bus_thermal],
+            bus = buses_RT[bus_thermal],
             active_power = 0.0,
             reactive_power = 0.0,
             rating = ratings[i],
-            active_power_limits = (min = min_active_power, max = max_active_power),
+            active_power_limits = (min = 0, max = max_active_power),
             reactive_power_limits = nothing,
             ramp_limits = (up = thermal_gens[i, "Max Ramp Up (MW/min)"]/100, down = thermal_gens[i, "Max Ramp Down (MW/min)"]/100),
             operation_cost = ThermalGenerationCost(nothing),

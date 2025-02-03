@@ -28,7 +28,7 @@ for i in 1:118
 		local load = PowerLoad(;
     		name = "load$num",
     		available = true,
-    		bus = buses[i],
+    		bus = buses_RT[i],
     		active_power = 0.0, #per-unitized by device base_power
     		reactive_power = 0.0, #per-unitized by device base_power
     		base_power = 100.0, # MVA, for loads match system
@@ -42,7 +42,7 @@ for i in 1:118
 		local load = PowerLoad(;
     		name = "load$num",
     		available = true,
-    		bus = buses[i],
+    		bus = buses_RT[i],
     		active_power = 0.0, #per-unitized by device base_power
     		reactive_power = 0.0, #per-unitized by device base_power
     		base_power = 100.0, # MVA, for loads match system
@@ -56,7 +56,7 @@ for i in 1:118
 		local load = PowerLoad(;
     		name = "load$num",
     		available = true,
-    		bus = buses[i],
+    		bus = buses_RT[i],
     		active_power = 0.0, #per-unitized by device base_power
     		reactive_power = 0.0, #per-unitized by device base_power
     		base_power = 100.0, # MVA, for loads match system

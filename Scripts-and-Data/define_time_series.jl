@@ -113,7 +113,7 @@ solar_RT_TS = []
 for i in 1:75
 	local solardf = CSV.read("Scripts-and-Data/TimeSeries/RT/Solar/Solar$(i)RT.csv", DataFrame)
 	local norm = parse(Float64, replace(gendata[i+223,5], ',' => '.'))
-	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm))
+	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100)
 	local solar_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = solar_array,
@@ -128,7 +128,7 @@ wind_RT_TS = []
 for i in 1:17
 	local winddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Wind/Wind$(i)RT.csv", DataFrame)
 	local norm = parse(Float64, replace(gendata[i+311,5], ',' => '.'))
-	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm))
+	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100)
 	local wind_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = wind_array,
@@ -159,7 +159,7 @@ solar_DA_TS = []
 for i in 1:75
 	local solardf = CSV.read("Scripts-and-Data/TimeSeries/DA/Solar/Solar$(i)DA.csv", DataFrame)
 	local norm = parse(Float64, replace(gendata[i+223,5], ',' => '.'))
-	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm))
+	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100)
 	local solar_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = solar_array,
@@ -174,7 +174,7 @@ wind_DA_TS = []
 for i in 1:17
 	local winddf = CSV.read("Scripts-and-Data/TimeSeries/DA/Wind/Wind$(i)DA.csv", DataFrame)
 	local norm = parse(Float64, replace(gendata[i+311,5], ',' => '.'))
-	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm))
+	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100)
 	local wind_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = wind_array,
