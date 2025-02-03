@@ -21,7 +21,7 @@ gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
 ```
 
 ### Build the buses - parsing data from `bus_params`
-The first building block are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. In this example we are defining the minimum voltage, maximum voltage and base voltage. 
+The first building blocks are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. In this example we are defining the minimum voltage, maximum voltage and base voltage. 
 ```@repl system 
 min_voltage_col_name = "Voltage-Min (pu)"
 max_voltage_col_name = "Voltage-Max (pu)"
@@ -48,7 +48,7 @@ end
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
-The next step is to build the lines and transformers in the system which are stored in the same CSV. A component is a line if the buses being connected have the same base voltage, and a transformer if they have different base voltages. 
+The next step is to build the lines and transformers in the system which are both stored in the `line_params` dataframe. A component is a line if the buses being connected have the same base voltage, and a transformer if they have different base voltages. 
 
 Begin by defining variables describing the lines/transformers using the columns found in the `line_params` dataframe. 
 ```@repl system 
@@ -78,8 +78,7 @@ for row in eachrow(line_params)
             rating = row[max_flow]/100,
             angle_limits = (min = 0.0, max = 0.0),
         );
-        add_component!(sys_DA, line)
-		add_component!(sys_RT, line)
+        add_component!(sys, line)
     else # if the base voltages of the connecting buses do not match build a transformer
         local tline = Transformer2W(;
             name = "line$num",
@@ -92,16 +91,96 @@ for row in eachrow(line_params)
             primary_shunt = 0.0,
             rating = row[max_flow]/100,
         );
-        add_component!(sys_DA, tline)
-		add_component!(sys_RT, tline)
+		add_component!(sys, tline)
     end
 end
 ```
 
+# Reading in Time Series Data
+### Establishing resolution of time series
+
+```@repl system
+resolution = Dates.Hour(1);
+timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
+gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
+```
+The following time series are hourly for the year 2023, meaning there are 8784 data points, or one
+time stamp for each hour, the resolution, of the year. The following steps are how to add these time
+series data to renewable generators. 
+
+### Reading in Solar Time Series
+
+```@repl system 
+solar_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Solar"
+
+for i in length(solar_generator)
+	solardf = CSV.read("$file_path/Solar$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(solardf[:, 2])
+	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100) # normalize and per-unitize data 
+	solar_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = solar_array,
+		   scaling_factor_multiplier = get_max_active_power, # max active power
+       );
+	push!(solar_RT_TS, solar_TS);
+end
+```
+
+### Reading in Wind Time Series
+
+```@repl system 
+wind_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Wind"
+
+for i in length(wind_generator)
+	winddf = CSV.read("$file_path/Wind$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(winddf[:, 2])
+	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100) # normalize and per-unitize data 
+	wind_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = wind_array,
+		   scaling_factor_multiplier = # max active power 
+       );
+	push!(wind_RT_TS, wind_TS);
+end
+```
+
+### Reading in Hydro Time Series 
+
+```@repl system 
+hydro_RT_TS = []
+file_path = "Scripts-and-Data/TimeSeries/RT/Hydro"
+
+for i in length(hydro_generator)
+	hydrodf = CSV.read("$file_path/Hydro$(i)RT.csv", DataFrame) # read in data 
+	norm = maximum(hydrodf[:, 2])
+	hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./norm)/100) # normalize and per-unitize data 
+	hydro_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = hydro_array,
+		   scaling_factor_multiplier = get_max_active_power, # max active power
+       );
+	push!(hydro_RT_TS, hydro_TS);
+end
+```
+
+```@repl system
+load_RT_TS = []
+
+for i in 1:3
+    local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
+    local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
+    local load_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = load_array,
+           scaling_factor_multiplier = get_max_active_power, #assumption?
+       );
+    push!(load_RT_TS, load_TS);
+end
+
 # Building Generator Components
-
-
-In this step we are creating dataframes characterized by the generator type because thermal generators, hydro generators and renewable generators are different types of components.   
+The generator data is stored in the `gen_params` dataframe. In this step we are creating dataframes characterized by the generator type because thermal generators, hydro generators and renewable generators are different types of components, and therefore built differently. 
 
 ```@repl system 
 for row in eachrow(gen_params)
@@ -116,8 +195,7 @@ for row in eachrow(gen_params)
     end
 end
 ```
-
-The next step is to build the generators by parsing data from `gen_params`. We can define variables describing the generators using columns found in the `gen_params`. 
+Now we have four dataframes containing the four types of generation. The next step is to build the generators by parsing data from `gen_params`. We can define variables describing the generators using columns found in `thermal_gens`, `hydro_gens`, `solar_gens`, and `wind_gens`.  
 ```@repl system 
 name = "Generator Name"
 bus_connection = "bus of connection"
@@ -131,7 +209,7 @@ min_up = "Min Up Time (h)"
 prime_move = "PrimeMoveType"
 ```
 
-
+We can now build the thermal generator components using the data stored in the `thermal_gens` dataframe. 
 ## Building Thermal Generators
 Build the thermal generators using the `thermal_gens` dataframe. 
 ```@repl system 
@@ -159,7 +237,7 @@ end
 ``` 
 
 # Build solar generators - parsing data from the `solar_gens` data frame
-Using similar logic as the previous section, let's build the solar generators. 
+Using similar logic as the previous section, let's build the solar generators, wind generators and hydro generators. 
 
 ```@repl system
 for row in eachrow(solar_gens)
@@ -181,7 +259,6 @@ bus = row[bus_connection]
 ```
 
 ### Build wind generators - parsing data from the `wind_gens` data frame
-
 ```@repl system
 
 for row in eachrow(wind_gens)
@@ -226,7 +303,7 @@ end
 ```
 
 # Building `RenewableGenerationCost`, `HydroGenerationCost` and `ThermalGenerationCost` functions
-The next step is to build attach the respective cost function to the generators. The cost function data is found in the `gen_params` data frame.  
+The next step is to build and attach the respective cost function to the generators. The cost function data can be found in the respective generator data frames. 
 
 ### `RenewableGenerationCost`
 For the renewable generators assume zero marginal cost. Therefore there is a `zero(CostCurve)`. Use the `set_operation_cost!` function to attach the cost function to the respective generators. 
