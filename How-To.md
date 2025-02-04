@@ -30,18 +30,18 @@ The first building block are the buses in the system. We can define variables de
 min_voltage_col_name = "Voltage-Min (pu)"
 max_voltage_col_name = "Voltage-Max (pu)"
 base_voltage_col_name = "Base Voltage"
+bus_number_col_name = "Number"
 ```
 
 ```@repl system
-buses = []
 for row in eachrow(bus_params)
-    num =  lpad(string(row, 3, '0'))
+    num = row[:bus_number_col_name]
     min_volt = row[:min_voltage_col_name]     
     max_volt = row[:max_voltage_col_name]
     base_volt = row[:base_voltage_col_name]
     bus = ACBus(;
            number = row[:number],
-           name = "bus$num",
+           name = "bus$row",
            bustype = ACBusTypes.PQ,
            angle = 0.0,
            magnitude = 1.0,
@@ -50,7 +50,7 @@ for row in eachrow(bus_params)
        )
     add_component!(sys, bus)
 end
-buses = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
+buses = sort!(get_buses(sys, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
@@ -58,43 +58,49 @@ The next step is to build the lines and transformers in the system which are bot
 
 Begin by defining variables describing the lines/transformers using the columns found in the `line_params` dataframe. 
 ```@repl system 
-bus_from = "Bus from"
-bus_to = "Bus to" 
+bus_from_col = "Bus from"
+bus_to_col = "Bus to" 
 reactance = "Reactance (p.u.)"
 resistance = "Resistance (p.u.)"
 max_flow = "Max Flow (MW)"
-min_flow = "Min Flow (MW)"
+active_flow = "Active Power Flow"
+reactive_flow = "Reactive Power Flow"
+b_from = "Shunt Susceptance From"
+b_to = "Shunt Susceptance To"
+max_lim = "Angle Limit Max"
+min_lim = "Angle Limit Min"
+shunt = "Primary Shunt"
 ```
 ```@repl system
-for i in length(lines)
-	num =  lpad(string(row, 3, '0'))
+for row in eachrow(line_params)
+	num =  lpad(string(rownumber(row), 3, '0'))
 	bus_from = parse(Int, row[bus_from_col][4:6])
     bus_to = parse(Int, row[bus_to_col][4:6])	
     if # voltage at connecting ends is the same - build a line
         local line = Line(;
             name = "branch$num"
             available = true,
-            active_power_flow = # parsed data,
-            reactive_power_flow = # parsed data,
-            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = row[resistance_col],
-            x = row[reactance_col],
-            b = # parsed data,
-            rating = row[max_flow_col]/100,
-            angle_limits = # parsed data,
+            active_power_flow = row[active_flow],
+            reactive_power_flow = row[reactive_flow],
+            arc = Arc(; from = get_bus(sys, bus_from), to = get_bus(sys, bus_to)),
+            r = row[resistance],
+            x = row[reactance],
+            b = (from = row[b_from], to = row[b_to]),
+            rating = row[max_flow]/100,
+            angle_limits = (min = min_lim, max = max_lim),
         );
         add_component!(sys, line)
     else # if the base voltages of the connecting buses do not match build a transformer
         local tline = Transformer2W(;
             name = "branch$num"
             available = true,
-            active_power_flow = # parsed data,
-            reactive_power_flow = # parsed data,
-            arc = Arc(; from = get_bus(sys_DA, bus_from), to = get_bus(sys_DA, bus_to)),
-            r = row[resistance_col],
-            x = row[reactance_col],
-            primary_shunt = # parsed data,
-            rating = row[max_flow_col]/100,
+            active_power_flow = row[active_flow],
+            reactive_power_flow = row[reactive_flow],
+            arc = Arc(; from = get_bus(sys, bus_from), to = get_bus(sys, bus_to)),
+            r = row[resistance],
+            x = row[reactance],
+            primary_shunt = row[shunt],
+            rating = row[max_flow]/100,
         );
 		add_component!(sys, tline)
     end
@@ -104,23 +110,21 @@ end
 # Reading in Time Series Data
 
 ### Establishing resolution of time series
-
+The following time series are hourly resolution for the year 2023, plus one day into the following year for a total of 366 days. The following steps show how to read in and add time series data to renewable and hydro generators, and powerloads.
 ```@repl system
 resolution = Dates.Hour(1);
 timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
 gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
 ```
-The following time series are hourly resolution for the year 2023. The following steps show how to read in and add time series data to renewable and hydro generators, and powerloads.
-
 
 ### Reading in Solar Time Series
 
 ```@repl system 
 solar_RT_TS = []
-file_path = "Scripts-and-Data/TimeSeries/RT/Solar"
+file_dir = "Scripts-and-Data/TimeSeries/RT/Solar"
 
-for i in length(solar_generator)
-	solardf = CSV.read("$file_path/Solar$(i)RT.csv", DataFrame) # read in data 
+for row in eachrow(solar_gens)
+	solardf = CSV.read("$file_dir/Solar$(i)RT.csv", DataFrame) # read in data 
 	norm = maximum(solardf[:, 2])
 	solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100) # normalize and per-unitize data 
 	solar_TS = SingleTimeSeries(;
@@ -136,10 +140,10 @@ end
 
 ```@repl system 
 wind_RT_TS = []
-file_path = "Scripts-and-Data/TimeSeries/RT/Wind"
+file_dir = "Scripts-and-Data/TimeSeries/RT/Wind"
 
-for i in length(wind_generator)
-	winddf = CSV.read("$file_path/Wind$(i)RT.csv", DataFrame) # read in data 
+for row in eachrow(wind_gens)
+	winddf = CSV.read("$file_dir/Wind$(i)RT.csv", DataFrame) # read in data 
 	norm = maximum(winddf[:, 2])
 	wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100) # normalize and per-unitize data 
 	wind_TS = SingleTimeSeries(;
@@ -157,7 +161,7 @@ end
 hydro_RT_TS = []
 file_path = "Scripts-and-Data/TimeSeries/RT/Hydro"
 
-for i in length(hydro_generator)
+for row in eachrow(hydro_gens)
 	hydrodf = CSV.read("$file_path/Hydro$(i)RT.csv", DataFrame) # read in data 
 	norm = maximum(hydrodf[:, 2])
 	hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./norm)/100) # normalize and per-unitize data 
@@ -172,11 +176,10 @@ end
 
 ### Reading in Load Time Series
 If your time series data is defined by region as opposed to component, here is how you would create 
-those time series objects.
+those time series objects. In this case there are 3 regions.
 
 ```@repl system
 load_RT_TS = []
-
 for i in 1:3
     local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
     local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
@@ -219,7 +222,6 @@ min_up = "Min Up Time (h)"
 prime_move = "PrimeMoveType"
 ```
 
-We can now build the thermal generator components using the data stored in the `thermal_gens` dataframe. 
 ## Building Thermal Generators
 Build the thermal generators using the `thermal_gens` dataframe. 
 ```@repl system 
@@ -229,7 +231,7 @@ for row in eachrow(thermal_gens)
             name = row[name], 
             available = true,
             status = true,
-            bus = get_bus(sys_DA, bus),
+            bus = get_bus(sys, bus),
             active_power = 0,
             reactive_power = 0,
             rating = row[rate],
@@ -255,7 +257,7 @@ bus = row[bus_connection]
     local solar = RenewableDispatch(;
         name = row[name],
         available = true,
-        bus = get_bus(sys_DA, bus)
+        bus = get_bus(sys, bus)
         active_power = 0,
         reactive_power = 0,
         rating = row[rate], 
@@ -277,7 +279,7 @@ for row in eachrow(wind_gens)
     local wind = RenewableDispatch(;
         name = row[name],
         available = true,
-        bus = get_bus(sys_DA, bus),
+        bus = get_bus(sys, bus),
         active_power = 0,
         reactive_power = 0, 
         rating = row[rate],
@@ -298,7 +300,7 @@ for row in eachrow(hydro_gens)
     local hydro = HydroDispatch(;
         name = row[name]
         available = true,
-        bus = get_bus(sys_DA, bus),
+        bus = get_bus(sys, bus),
         active_power = 0.0,
         reactive_power = 0.0,
         rating = row[rate],
@@ -322,7 +324,7 @@ The next step is to build and attach the respective cost function to the generat
 For the renewable generators assume zero marginal cost. Therefore there is a `zero(CostCurve)`. Use the `set_operation_cost!` function to attach the cost function to the respective generators. 
 ```@repl system 
 ren_gens = collect(get_components(RenewableDispatch, sys)) #collect the renewable generators in a vector
-for i in length(renewable_generation)
+for i in length(ren_gens)
     cost_curve = zero(CostCurve) 
     cost_ren = RenewableGenerationCost(cost_curve)
     ren_gen = ren_gens[i] 
@@ -335,7 +337,7 @@ For more information regarding renewable cost function please visit [RenewableGe
 Hydro generation costs are defined by a fixed and variable cost. In this example assume both are zero. 
 ```@repl system 
 hydrogens = collect(get_components(HydroDispatch, sys)) #collect hydro generators
-for i in length(hydro_generators)
+for i in length(hydrogens)
     curve = LinearCurve(0.0)
     value_curve = CostCurve(curve) # This can either be a CostCurve() or FuelCurve()
     fixed = 0.0 
@@ -348,6 +350,8 @@ For more information regarding hydro cost functions please visit [HydroGeneratio
 
 ### `ThermalGenerationCost`
 In this case the thermal generator cost is defined by fuel curves not cost curves. Begin by importaing and parsing the CSV that describes fuel costs. 
+
+Create a dictionary of fuel types and costs. 
 ```@repl system 
 fuel_params = CSV.read("Scripts-and-Data\\Fuels and emission rates.csv", DataFrame)
 fuel_cost = Dict(
@@ -420,7 +424,7 @@ For more information regarding thermal cost functions please visit [ThermalGener
 
 
 
-### 
+
 
 
 
