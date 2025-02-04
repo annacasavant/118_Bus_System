@@ -19,8 +19,8 @@ Read in the CSV files that contain the data for building the system. In this
 example, the line, bus, and generator data are found in the following CSV files. 
 
 ```@repl system 
-line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
+line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame) 
 ```
 
@@ -36,14 +36,13 @@ number = "Number"
 ```
 
 ```@repl system
-buses = []
 for row in eachrow(bus_params)
     num =  lpad(string(row, 3, '0'))
-    min_volt = row[:min_voltage_col_name]     
-    max_volt = row[:max_voltage_col_name]
-    base_volt = row[:base_voltage_col_name]
+    min_volt = row[min_voltage_col_name]     
+    max_volt = row[max_voltage_col_name]
+    base_volt = row[base_voltage_col_name]
     bus = ACBus(;
-           number = row[:number],
+           number = row[number],
            name = "bus$num",
            bustype = ACBusTypes.PQ,
            angle = 0.0,
@@ -53,7 +52,6 @@ for row in eachrow(bus_params)
        )
     add_component!(sys, bus)
 end
-buses = sort!(get_buses(sys, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
@@ -214,7 +212,51 @@ Loads are, in this case, defined by which region they are in. The following is
 how to add these loads if there are three regions. 
 
 ```@repl system
+load_data = sort!(CSV.read("Scripts-and-Data/Loads.csv", DataFrame));
+loads_R1_RT = []
+loads_R2_RT = []
+loads_R3_RT = []
 
+file_path = "Scripts-and-Data/TimeSeries/RT/Load"
+region = "Region"
+factor = "Load Participation Factor"
+
+for row in eachrow(load_data)
+    num = lpad(rownumber(row), 3, '0')
+    i = parse(Int, row[region][2])
+    RTdf = CSV.read("$(file_path)/LoadR$(i)RT.csv", DataFrame);
+    max = maximum(RTdf[:, 2])
+    load = PowerLoad(;
+        name = "load$num",
+        available = true,
+        bus = get_bus(sys, num),
+        active_power = 0.0, #per-unitized by device base_power
+        reactive_power = 0.0, #per-unitized by device base_power
+        base_power = 100.0, # MVA, for loads match system
+        max_active_power = (max)*(row[factor])/100, #per-unitized by device base_power?
+        max_reactive_power = 0.0,
+    );
+    add_component!(sys, load);
+    if i == 1
+        push!(loads_R1_RT, load)
+    elseif i == 2
+        push!(loads_R2_RT, load)
+    else i == 3
+        push!(loads_R3_RT, load)
+    end
+end
+
+loads_RT = [loads_R1_RT, loads_R2_RT, loads_R3_RT]
+
+for i in 1:3
+    associations = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[i],)
+        for load in loads_RT[i]
+    );
+    bulk_add_time_series!(sys_RT, associations);
+end
 ```
 
 # Building Generator Components
@@ -261,12 +303,12 @@ We can now build the thermal generator components using the data stored in the
 
 ```@repl system 
 for row in eachrow(thermal_gens)
-        bus = row[bus_connection]
+        thermal_bus = row[bus_connection]
         local thermal = ThermalStandard(;
             name = row[name], 
             available = true,
             status = true,
-            bus = get_bus(sys_DA, bus),
+            bus = get_bus(sys, thermal_bus),
             active_power = 0,
             reactive_power = 0,
             rating = row[rate],
@@ -275,7 +317,7 @@ for row in eachrow(thermal_gens)
             ramp_limits = (up = row[ramp_up], down = row[ramp_down]),
             operation_cost = ThermalGenerationCost(nothing), 
             base_power = 100,
-            time_limits = ( up = row[min_up], down = row[min_down]),
+            time_limits = (up = row[min_up], down = row[min_down]),
             prime_mover_type = row[prime_move],
             fuel = row[fuel],
         )
@@ -290,11 +332,11 @@ data.
 
 ```@repl system
 for row in eachrow(solar_gens)
-bus = row[bus_connection]
+    solar_bus = row[bus_connection]
     local solar = RenewableDispatch(;
         name = row[name],
         available = true,
-        bus = get_bus(sys_DA, bus)
+        bus = get_bus(sys, solar_bus)
         active_power = 0,
         reactive_power = 0,
         rating = row[rate], 
@@ -312,11 +354,11 @@ bus = row[bus_connection]
 
 ```@repl system
 for row in eachrow(wind_gens)
-    bus = row[bus_connection]
+    wind_bus = row[bus_connection]
     local wind = RenewableDispatch(;
         name = row[name],
         available = true,
-        bus = get_bus(sys_DA, bus),
+        bus = get_bus(sys, wind_bus),
         active_power = 0,
         reactive_power = 0, 
         rating = row[rate],
@@ -335,11 +377,11 @@ end
 
 ```@repl system 
 for row in eachrow(hydro_gens)
-    bus = row[bus_connection]
+    hydro_bus = row[bus_connection]
     local hydro = HydroDispatch(;
         name = row[name]
         available = true,
-        bus = get_bus(sys_DA, bus),
+        bus = get_bus(sys, hydro_bus),
         active_power = 0.0,
         reactive_power = 0.0,
         rating = row[rate],
