@@ -24,7 +24,7 @@ for row in eachrow(partfact)
     load = PowerLoad(;
         name = "load$num",
         available = true,
-        bus = get_bus(sys_RT, i),
+        bus = get_bus(sys_RT, rownumber(row)),
         active_power = 0.0, #per-unitized by device base_power
         reactive_power = 0.0, #per-unitized by device base_power
         base_power = 100.0, # MVA, for loads match system

@@ -20,7 +20,7 @@ for row in eachrow(partfact)
     load = PowerLoad(;
         name = "load$num",
         available = true,
-        bus = get_bus(sys_DA, i),
+        bus = get_bus(sys_DA, rownumber(row)),
         active_power = 0.0, #per-unitized by device base_power
         reactive_power = 0.0, #per-unitized by device base_power
         base_power = 100.0, # MVA, for loads match system
@@ -37,7 +37,7 @@ for row in eachrow(partfact)
     end
 end
 
-loads_DA = [loads_R1_DA, loads_R2_DA, loads_R3_DA]
+loads_DA = [loads_R1_DA, loads_R2_DA, loads_R3_DA];
 
 for i in 1:3
     associations = (
