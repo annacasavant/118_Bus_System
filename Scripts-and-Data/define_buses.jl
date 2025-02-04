@@ -1,5 +1,3 @@
-
-
 using PowerSystems
 using CSV
 using DataFrames
@@ -8,7 +6,6 @@ using DataFrames
 # reading in bus data to a dataframe
 
 sys_DA= System(100.0) #assuming base power 100MVA per-unitization
-sys_RT = System(100.0) #assuming base power 100MVA per-unitization
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
 
 # defining column names as variables
@@ -25,58 +22,20 @@ for row in eachrow(bus_params)
     max_volt = row[MAX_VOLT_COL]
     base_volt = row[BASE_VOLT_COL]
     if row[BUS_NUM_COL] == 69
-    	bus = ACBus(;
-           number = parse(Int64, num),
-           name = "bus$num",
-           bustype = ACBusTypes.REF,
-           angle = 0.0,
-           magnitude = 1.0,
-           voltage_limits = (min = min_volt, max = max_volt),
-           base_voltage = base_volt,
-       	)
+        type = ACBusTypes.REF
     else 
-        bus = ACBus(;
-        number = parse(Int64, num),
-        name = "bus$num",
-        bustype = ACBusTypes.PQ,
-        angle = 0.0,
-        magnitude = 1.0,
-        voltage_limits = (min = min_volt, max = max_volt),
-        base_voltage = base_volt,
-    	)
-	end
+        type = ACBusTypes.PQ
+    end
+    local bus = ACBus(;
+      number = parse(Int64, num),
+      name = "bus$num",
+      bustype = type,
+      angle = 0.0,
+      magnitude = 1.0,
+      voltage_limits = (min = min_volt, max = max_volt),
+      base_voltage = base_volt,
+    )
  	add_component!(sys_DA, bus)
- 	
 end
 
-for row in eachrow(bus_params)
-    num = lpad(row[BUS_NUM_COL], 3, '0')
-    min_volt = row[MIN_VOLT_COL]
-    max_volt = row[MAX_VOLT_COL]
-    base_volt = row[BASE_VOLT_COL]
-    if row[BUS_NUM_COL] == 69
-    	bus = ACBus(;
-           number = parse(Int64, num),
-           name = "bus$num",
-           bustype = ACBusTypes.REF,
-           angle = 0.0,
-           magnitude = 1.0,
-           voltage_limits = (min = min_volt, max = max_volt),
-           base_voltage = base_volt,
-       	)
-    else 
-        bus = ACBus(;
-        number = parse(Int64, num),
-        name = "bus$num",
-        bustype = ACBusTypes.PQ,
-        angle = 0.0,
-        magnitude = 1.0,
-        voltage_limits = (min = min_volt, max = max_volt),
-        base_voltage = base_volt,
-    	)
-	end
- 	add_component!(sys_RT, bus)
-end
-
-buses_DA = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
-buses_RT = sort!(get_buses(sys_RT, Set(1:length(bus_params[:, 1]))), by = n -> n.name);
+buses = sort!(get_buses(sys_DA, Set(1:length(bus_params[:, 1]))), by = n -> n.name);

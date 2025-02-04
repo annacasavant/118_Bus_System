@@ -35,7 +35,7 @@ for i in 1:75
     local solar = RenewableDispatch(;
         name = "solar$num",
         available = true,
-        bus = buses_RT[bus_solar],
+        bus = get_bus(sys_RT, bus_solar),
         active_power = 0.0,
         reactive_power = 0,
         rating = rate,
@@ -55,11 +55,11 @@ wind_RT_gens = []
 for i in 1:17
 	num = lpad(i, 3, '0')
     local bus_wind = parse(Int, wind_gens[i, "bus of connection"][4:6])
-    local rate = gen_params[i, "Max Capacity (MW)"]
+    rate = gen_params[i, "Max Capacity (MW)"]
     local wind = RenewableDispatch(;
         name = "wind$num",
         available = true,
-        bus = buses_RT[bus_wind],
+        bus = get_bus(sys_RT, bus_wind),
         active_power = 0.0,
         reactive_power = 0,
         rating = rate,
@@ -94,7 +94,7 @@ for i in 1:43
     local hydro = HydroDispatch(;
         name = "hydro$num",
         available = true,
-        bus = buses_RT[bus_hydro],
+        bus = get_bus(sys_RT, bus_hydro),
         active_power = 0.0,
         reactive_power = 0,
         rating = 0,
@@ -284,7 +284,7 @@ for i in 1:192
             name = thermal_gens[i, "Generator Name"],
             available = true,
             status = true,
-            bus = buses_RT[bus_thermal],
+            bus = get_bus(sys_RT, bus_thermal),
             active_power = 0.0,
             reactive_power = 0.0,
             rating = ratings[i],
