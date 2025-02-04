@@ -65,14 +65,7 @@ resistance = "Resistance (p.u.)"
 max_flow = "Max Flow (MW)"
 min_flow = "Min Flow (MW)"
 ```
-
 ```@repl system
-bus_from_col = "Bus from "
-bus_to_col = "Bus to" 
-resistance_col = "Resistance (p.u.)"
-reactance_col = "Reactance (p.u.)"
-max_flow_col = "Max Flow (MW)"
-
 for i in length(lines)
 	num =  lpad(string(row, 3, '0'))
 	bus_from = parse(Int, row[bus_from_col][4:6])
@@ -117,10 +110,8 @@ resolution = Dates.Hour(1);
 timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
 gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
 ```
+The following time series are hourly resolution for the year 2023. The following steps show how to read in and add time series data to renewable and hydro generators, and powerloads.
 
-The following time series are hourly for the year 2023, meaning there are 8784 data points, or one
-time stamp for each hour, the resolution, of the year. The following steps are how to add these time
-series data to renewable generators. 
 
 ### Reading in Solar Time Series
 
@@ -256,7 +247,7 @@ end
 ``` 
 
 # Build solar generators - parsing data from the `solar_gens` data frame
-Using similar logic as the previous section, let's build the solar generators, wind generators and hydro generators. 
+Using similar logic as the previous section, let's build the solar generators, wind generators and hydro generators, and attach the respective time series data. 
 
 ```@repl system
 for row in eachrow(solar_gens)
@@ -322,90 +313,6 @@ for row in eachrow(hydro_gens)
     add_component!(sys, hydro)
 	add_time_series!(sys, hydro, hydro_RT_TS[i])
 end
-```
-
-### Build hydro generators - parsing data from `gen_params` 
-
-This is how you would build loads if those loads were defined by region and not by generator.
-
-```@repl system
-file_path = "Scripts-and-Data/TimeSeries/RT/Load"
-
-R1RTdf = CSV.read("$file_path/LoadR1RT.csv", DataFrame);
-R2RTdf = CSV.read("$file_path/LoadR2RT.csv", DataFrame);
-R3RTdf = CSV.read("$file_path/LoadR3RT.csv", DataFrame);
-load_data = sort!(CSV.read("Scripts-and-Data/partfact.csv", DataFrame));
-
-load_region = "Region"
-factor = "Load Participation Factor"
-
-for i in 1:118
-    num = lpad(i, 3, '0')
-    if load_data[i, load_region] == 1
-        local max1 = maximum(R1RTdf[:, 2])
-        local load = PowerLoad(;
-            name = "load$num",
-            available = true,
-            bus = buses[i],
-            active_power = 0.0, #per-unitized by device base_power
-            reactive_power = 0.0, #per-unitized by device base_power
-            base_power = 100.0, # MVA, for loads match system
-            max_active_power = (max1)*(load_data[i, "factor"])/100, #per-unitized by device base_power
-            max_reactive_power = 0.0,
-        );
-        add_component!(sys, load)
-    elseif load_data[i, load_region] == 2
-        local max2 = maximum(R2RTdf[:, 2])
-        local load = PowerLoad(;
-            name = "load$num",
-            available = true,
-            bus = buses[i],
-            active_power = 0.0, #per-unitized by device base_power
-            reactive_power = 0.0, #per-unitized by device base_power
-            base_power = 100.0, # MVA, for loads match system
-            max_active_power = (max2)*(load_data[i, "factor"])/100, #per-unitized by device base_power
-            max_reactive_power = 0.0,
-        );
-        add_component!(sys, load)
-    else load_data[i, "load_region"] == 3
-        local max3 = maximum(R3RTdf[:, 2])
-        local load = PowerLoad(;
-            name = "load$num",
-            available = true,
-            bus = buses[i],
-            active_power = 0.0, #per-unitized by device base_power
-            reactive_power = 0.0, #per-unitized by device base_power
-            base_power = 100.0, # MVA, for loads match system
-            max_active_power = (max3)*(load_data[i, "factor"])/100, #per-unitized by device base_power
-            max_reactive_power = 0.0,
-        );
-        add_component!(sys, load)
-    end
-end
-
-associations1 = (
-    InfrastructureSystems.TimeSeriesAssociation(
-        load,
-        load_RT_TS[1],)
-    for load in loads_RT_R1
-)
-bulk_add_time_series!(sys, associations1)
-
-associations2 = (
-    InfrastructureSystems.TimeSeriesAssociation(
-        load,
-        load_RT_TS[2],)
-    for load in loads_RT_R2
-)
-bulk_add_time_series!(sys, associations2)
-
-associations3 = (
-    InfrastructureSystems.TimeSeriesAssociation(
-        load,
-        load_RT_TS[3],)
-    for load in loads_RT_R3
-)
-bulk_add_time_series!(sys, associations3)
 ```
 
 # Building `RenewableGenerationCost`, `HydroGenerationCost` and `ThermalGenerationCost` functions
