@@ -15,16 +15,18 @@ sys = System(100)
 ```
 
 ### Read in all component data 
-Read in the CSV files that contain the data for building the system. In this example, the line, bus and generator data are found in the following CSV files. 
+Read in the CSV files that contain the data for building the system. In this
+example, the line, bus, and generator data are found in the following CSV files. 
 
 ```@repl system 
-line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
+line_params = CSV.read("Scripts-and-Data/Lines.csv", DataFrame)
 gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame) 
 ```
 
 ### Build the buses - parsing data from `bus_params`
-The first building block are the buses in the system. We can define variables describing the buses using columns found in the `bus_params.csv` file. 
+The first building block are the buses in the system. We can define variables
+describing the buses using columns found in the `bus_params.csv` file. 
 
 ```@repl system 
 min_voltage_col_name = "Voltage-Min (pu)"
@@ -54,10 +56,17 @@ buses = sort!(get_buses(sys, Set(1:length(bus_params[:, 1]))), by = n -> n.name)
 ```
 
 ### Build the lines and transformers - parsing data from `line_params`
-The next step is to build the lines and transformers in the system which are both stored in the `line_params` dataframe. A component is a line if the buses being connected have the same base voltage, and a transformer if they have different base voltages. 
+The next step is to build the lines and transformers in the system which are
+both stored in the `line_params` dataframe. A branch is a `Line` if the buses
+being connected have the same base voltage, and a `Transformer2W` if they have
+different base voltages. 
 
-Begin by defining variables describing the lines/transformers using the columns found in the `line_params` dataframe. 
+Begin by defining variables describing the lines/transformers using the columns
+found in the `line_params` dataframe. 
+
 ```@repl system 
+bus_from_col = "Bus from"
+bus_to_col = "Bus to" 
 bus_from_col = "Bus from"
 bus_to_col = "Bus to" 
 reactance = "Reactance (p.u.)"
@@ -70,8 +79,18 @@ b_to = "Shunt Susceptance To"
 max_lim = "Angle Limit Max"
 min_lim = "Angle Limit Min"
 shunt = "Primary Shunt"
+active_flow = "Active Power Flow"
+reactive_flow = "Reactive Power Flow"
+b_from = "Shunt Susceptance From"
+b_to = "Shunt Susceptance To"
+max_lim = "Angle Limit Max"
+min_lim = "Angle Limit Min"
+shunt = "Primary Shunt"
 ```
+
 ```@repl system
+for row in eachrow(line_params)
+	num =  lpad(string(rownumber(row), 3, '0'))
 for row in eachrow(line_params)
 	num =  lpad(string(rownumber(row), 3, '0'))
 	bus_from = parse(Int, row[bus_from_col][4:6])
@@ -88,12 +107,27 @@ for row in eachrow(line_params)
             b = (from = row[b_from], to = row[b_to]),
             rating = row[max_flow]/100,
             angle_limits = (min = min_lim, max = max_lim),
+            active_power_flow = row[active_flow],
+            reactive_power_flow = row[reactive_flow],
+            arc = Arc(; from = get_bus(sys, bus_from), to = get_bus(sys, bus_to)),
+            r = row[resistance],
+            x = row[reactance],
+            b = (from = row[b_from], to = row[b_to]),
+            rating = row[max_flow]/100,
+            angle_limits = (min = min_lim, max = max_lim),
         );
         add_component!(sys, line)
     else # if the base voltages of the connecting buses do not match build a transformer
         local tline = Transformer2W(;
             name = "branch$num"
             available = true,
+            active_power_flow = row[active_flow],
+            reactive_power_flow = row[reactive_flow],
+            arc = Arc(; from = get_bus(sys, bus_from), to = get_bus(sys, bus_to)),
+            r = row[resistance],
+            x = row[reactance],
+            primary_shunt = row[shunt],
+            rating = row[max_flow]/100,
             active_power_flow = row[active_flow],
             reactive_power_flow = row[reactive_flow],
             arc = Arc(; from = get_bus(sys, bus_from), to = get_bus(sys, bus_to)),
@@ -159,6 +193,7 @@ end
 
 ```@repl system 
 hydro_RT_TS = []
+number_hydros = 43
 file_path = "Scripts-and-Data/TimeSeries/RT/Hydro"
 
 for row in eachrow(hydro_gens)
@@ -192,8 +227,63 @@ for i in 1:3
 end
 ```
 
+# Building `PowerLoad` Components
+Loads are, in this case, defined by which region they are in. The following is
+how to add these loads if there are three regions. 
+
+```@repl system
+load_data = sort!(CSV.read("Scripts-and-Data/Loads.csv", DataFrame));
+loads_R1_RT = []
+loads_R2_RT = []
+loads_R3_RT = []
+
+file_path = "Scripts-and-Data/TimeSeries/RT/Load"
+region = "Region"
+factor = "Load Participation Factor"
+
+for row in eachrow(load_data)
+    num = lpad(rownumber(row), 3, '0')
+    i = parse(Int, row[region][2])
+    RTdf = CSV.read("$(file_path)/LoadR$(i)RT.csv", DataFrame);
+    max = maximum(RTdf[:, 2])
+    load = PowerLoad(;
+        name = "load$num",
+        available = true,
+        bus = get_bus(sys, num),
+        active_power = 0.0, #per-unitized by device base_power
+        reactive_power = 0.0, #per-unitized by device base_power
+        base_power = 100.0, # MVA, for loads match system
+        max_active_power = (max)*(row[factor])/100, #per-unitized by device base_power?
+        max_reactive_power = 0.0,
+    );
+    add_component!(sys, load);
+    if i == 1
+        push!(loads_R1_RT, load)
+    elseif i == 2
+        push!(loads_R2_RT, load)
+    else i == 3
+        push!(loads_R3_RT, load)
+    end
+end
+
+loads_RT = [loads_R1_RT, loads_R2_RT, loads_R3_RT]
+
+for i in 1:3
+    associations = (
+    InfrastructureSystems.TimeSeriesAssociation(
+        load,
+        load_RT_TS[i],)
+        for load in loads_RT[i]
+    );
+    bulk_add_time_series!(sys_RT, associations);
+end
+```
+
 # Building Generator Components
-The generator data is stored in the `gen_params` dataframe. In this step we are creating dataframes characterized by the generator type because thermal generators, hydro generators and renewable generators are different types of components, and therefore built differently. 
+The generator data is stored in the `gen_params` dataframe. In this step we are
+creating dataframes characterized by the generator type because thermal
+generators, hydro generators and renewable generators are different types of
+components, and therefore built differently. 
 
 ```@repl system 
 for row in eachrow(gen_params)
@@ -208,7 +298,12 @@ for row in eachrow(gen_params)
     end
 end
 ```
-Now we have four dataframes containing the four types of generation. The next step is to build the generators by parsing data from `gen_params`. We can define variables describing the generators using columns found in `thermal_gens`, `hydro_gens`, `solar_gens`, and `wind_gens`.  
+
+Now we have four dataframes containing the four types of generation. The next
+step is to build the generators by parsing data from `gen_params`. We can
+define variables describing the generators using columns found in
+`thermal_gens`, `hydro_gens`, `solar_gens`, and `wind_gens`.  
+
 ```@repl system 
 name = "Generator Name"
 bus_connection = "bus of connection"
@@ -223,10 +318,12 @@ prime_move = "PrimeMoveType"
 ```
 
 ## Building Thermal Generators
-Build the thermal generators using the `thermal_gens` dataframe. 
+We can now build the thermal generator components using the data stored in the
+`thermal_gens` dataframe. 
+
 ```@repl system 
 for row in eachrow(thermal_gens)
-        bus = row[bus_connection]
+        thermal_bus = row[bus_connection]
         local thermal = ThermalStandard(;
             name = row[name], 
             available = true,
@@ -240,7 +337,7 @@ for row in eachrow(thermal_gens)
             ramp_limits = (up = row[ramp_up], down = row[ramp_down]),
             operation_cost = ThermalGenerationCost(nothing), 
             base_power = 100,
-            time_limits = ( up = row[min_up], down = row[min_down]),
+            time_limits = (up = row[min_up], down = row[min_down]),
             prime_mover_type = row[prime_move],
             fuel = row[fuel],
         )
@@ -249,11 +346,13 @@ end
 ``` 
 
 # Build solar generators - parsing data from the `solar_gens` data frame
-Using similar logic as the previous section, let's build the solar generators, wind generators and hydro generators, and attach the respective time series data. 
+Using similar logic as the previous section, let's build the solar generators,
+wind generators and hydro generators, and attach the respective time series
+data. 
 
 ```@repl system
 for row in eachrow(solar_gens)
-bus = row[bus_connection]
+    solar_bus = row[bus_connection]
     local solar = RenewableDispatch(;
         name = row[name],
         available = true,
@@ -272,10 +371,10 @@ bus = row[bus_connection]
 ```
 
 ### Build wind generators - parsing data from the `wind_gens` data frame
-```@repl system
 
+```@repl system
 for row in eachrow(wind_gens)
-    bus = row[bus_connection]
+    wind_bus = row[bus_connection]
     local wind = RenewableDispatch(;
         name = row[name],
         available = true,
@@ -293,10 +392,12 @@ for row in eachrow(wind_gens)
 	add_time_series!(sys, wind, wind_RT_TS[i])
 end
 ```
+
 ### Build hydro generators - parsing data from the `hydro_gens` data frame 
+
 ```@repl system 
 for row in eachrow(hydro_gens)
-    bus = row[bus_connection]
+    hydro_bus = row[bus_connection]
     local hydro = HydroDispatch(;
         name = row[name]
         available = true,
@@ -318,10 +419,15 @@ end
 ```
 
 # Building `RenewableGenerationCost`, `HydroGenerationCost` and `ThermalGenerationCost` functions
-The next step is to build and attach the respective cost function to the generators. The cost function data can be found in the respective generator data frames. 
+The next step is to build and attach the respective cost function to the
+generators. The cost function data can be found in the respective generator
+data frames. 
 
 ### `RenewableGenerationCost`
-For the renewable generators assume zero marginal cost. Therefore there is a `zero(CostCurve)`. Use the `set_operation_cost!` function to attach the cost function to the respective generators. 
+For the renewable generators assume zero marginal cost. Therefore there is a
+`zero(CostCurve)`. Use the `set_operation_cost!` function to attach the cost
+function to the respective generators. 
+
 ```@repl system 
 ren_gens = collect(get_components(RenewableDispatch, sys)) #collect the renewable generators in a vector
 for i in length(ren_gens)
@@ -331,10 +437,14 @@ for i in length(ren_gens)
     set_operation_cost!(ren_gen, cost_ren)
 end
 ``` 
-For more information regarding renewable cost function please visit [RenewableGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/renewable_generation_cost/#RenewableGenerationCost).
+
+For more information regarding renewable cost function please visit
+[RenewableGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/renewable_generation_cost/#RenewableGenerationCost).
 
 ### `HydroGenerationCost`
-Hydro generation costs are defined by a fixed and variable cost. In this example assume both are zero. 
+Hydro generation costs are defined by a fixed and variable cost. In this
+example assume both are zero. 
+
 ```@repl system 
 hydrogens = collect(get_components(HydroDispatch, sys)) #collect hydro generators
 for i in length(hydrogens)
@@ -346,7 +456,9 @@ for i in length(hydrogens)
     set_operation_cost!(hydrogens[i], cost_hydro)
 end
 ```
-For more information regarding hydro cost functions please visit [HydroGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/hydro_generation_cost/). 
+
+For more information regarding hydro cost functions please visit
+[HydroGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/hydro_generation_cost/). 
 
 ### `ThermalGenerationCost`
 In this case the thermal generator cost is defined by fuel curves not cost curves. Begin by importaing and parsing the CSV that describes fuel costs. 
@@ -362,7 +474,9 @@ fuel_cost = Dict(
     "geo" => fuel_params[5, 2],
 )
 ```
+
 Assign a fuel type and price to the generators based on their name.  
+
 ```@repl system 
 fuel_prices = []
 fuel = []
@@ -391,8 +505,11 @@ for row in eachrow(thermal_gens)
     end
 end
 ```
+
 ### Parse heat rates, load points and heat rate bases. 
-Heat rates, load points, and heat rate bases are used to construct linear and piecewise fuel curves that describe the operational cost of the thermal units. 
+Heat rates, load points, and heat rate bases are used to construct linear and
+piecewise fuel curves that describe the operational cost of the thermal units. 
+
 ```@repl system 
 heat_rate_base = thermal_gens[:, "Heat Rate Base (MMBTU/hr)"]
 heat_rate = thermal_gens[:, "Heat Rate (MMBTU/hr)"]
@@ -401,7 +518,10 @@ fixed_cost = thermal_gen[: "Fixed Cost"]
 start_up_cost = thermal_gen[:, "Start Up Cost"]
 shut_down_cost = thermal_gen[:. "Shut Down Cost"]
 ```
-Using the heat rate bases, heat rates, load points and fuel costs, we can construct the thermal generation cost functions. 
+
+Using the heat rate bases, heat rates, load points and fuel costs, we can
+construct the thermal generation cost functions. 
+
 ```@repl system 
 thermals = collect(get_components(ThermalStandard, sys)) # collect thermal generators 
 for row in eachrow(thermal_gens) 
@@ -420,9 +540,9 @@ for row in eachrow(thermal_gens)
         set_operation_cost!(thermals[i], cost_thermal)
 end
 ```
-For more information regarding thermal cost functions please visit [ThermalGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/thermal_generation_cost/). 
 
-
+For more information regarding thermal cost functions please visit
+[ThermalGenerationCost](https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/thermal_generation_cost/). 
 
 
 
