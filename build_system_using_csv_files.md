@@ -67,8 +67,6 @@ found in the `line_params` dataframe.
 ```@repl system 
 bus_from_col = "Bus from"
 bus_to_col = "Bus to" 
-bus_from_col = "Bus from"
-bus_to_col = "Bus to" 
 reactance = "Reactance (p.u.)"
 resistance = "Resistance (p.u.)"
 max_flow = "Max Flow (MW)"
@@ -79,14 +77,7 @@ b_to = "Shunt Susceptance To"
 max_lim = "Angle Limit Max"
 min_lim = "Angle Limit Min"
 shunt = "Primary Shunt"
-active_flow = "Active Power Flow"
-reactive_flow = "Reactive Power Flow"
-b_from = "Shunt Susceptance From"
-b_to = "Shunt Susceptance To"
-max_lim = "Angle Limit Max"
-min_lim = "Angle Limit Min"
-shunt = "Primary Shunt"
-number = "Number
+number = "Number"
 ```
 Build the lines and transformers using the [`Line`](@ref) and [`Transformer2W`](@ref) functions. 
 ```@repl system
