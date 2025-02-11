@@ -553,8 +553,10 @@ the thermal generation cost functions using the [`FuelCurve`](@ref) and
 [`PiecewiseIncrementalCurve`](@ref) functions.
 
 ```julia
-thermals = collect(get_components(ThermalStandard, sys)) # collect thermal generators
+gen_name = "Generator Name"
+
 for row in eachrow(thermal_gens)
+    thermal = get_component(ThermalStandard, sys, row[gen_name])
     fuel_cost = row[fuel_prices]
     heat_rate_base = row[heat_rate_base]
     heat_rate = row[heat_rate]
@@ -568,7 +570,7 @@ for row in eachrow(thermal_gens)
         start_up = row[start_up_cost],
         shut_down = row[shut_down_cost],
     )
-    set_operation_cost!(thermals[rownumber(row)], cost_thermal)
+    set_operation_cost!(thermal, cost_thermal)
 end
 ```
 
