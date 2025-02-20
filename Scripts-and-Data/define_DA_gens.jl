@@ -4,9 +4,9 @@ using PowerSystems
 using CSV
 using DataFrames
 
-#definiting all the generators and adding them to appropriate buses
+# definiting all the generators and adding them to appropriate buses
 
-#parsing all ThermalStandard gens 
+# parsing all ThermalStandard gens 
 
 gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
 thermal_gens = DataFrame()
@@ -26,8 +26,8 @@ for row in eachrow(gen_params)
     end
 end
 
-#building the solar gens
-solar_DA_gens = []
+# building the solar gens
+#solar_DA_gens = []
 for i in 1:75
 	num = lpad(i, 3, '0')
     local bus_solar = parse(Int, solar_gens[i, "bus of connection"][4:6])
@@ -35,9 +35,9 @@ for i in 1:75
     local solar = RenewableDispatch(;
         name = "solar$num",
         available = true,
-        bus = buses_DA[bus_solar],
+        bus = get_bus(sys_DA, bus_solar),
         active_power = 0.0,
-        reactive_power = 0,
+        reactive_power = 0.0,
         rating = rate,
         prime_mover_type = PrimeMovers.PVe,
         reactive_power_limits = (min = 0.0, max = 0.0),
@@ -47,11 +47,11 @@ for i in 1:75
         )
     add_component!(sys_DA, solar)
 	add_time_series!(sys_DA, solar, solar_DA_TS[i])
-	push!(solar_DA_gens, solar)
+	#push!(solar_DA_gens, solar)
 end
 
-#building the wind gens
-wind_DA_gens = []
+# building the wind gens
+#wind_DA_gens = []
 for i in 1:17
 	num = lpad(i, 3, '0')
     local bus_wind = parse(Int, wind_gens[i, "bus of connection"][4:6])
@@ -59,9 +59,9 @@ for i in 1:17
     local wind = RenewableDispatch(;
         name = "wind$num",
         available = true,
-        bus = buses_DA[bus_wind],
+        bus = get_bus(sys_DA, bus_wind),
         active_power = 0.0,
-        reactive_power = 0,
+        reactive_power = 0.0,
         rating = rate,
         prime_mover_type = PrimeMovers.WT,
         reactive_power_limits = (min = 0.0, max = 0.0),
@@ -71,10 +71,12 @@ for i in 1:17
         )
     add_component!(sys_DA, wind)
 	add_time_series!(sys_DA, wind, wind_DA_TS[i])
-	push!(wind_DA_gens, wind)
+	#push!(wind_DA_gens, wind)
 end
+
 ## Making RenewableGenerationCost functions
 # assume no VOM cost and no curtailment cost 
+
 ren_gens = collect(get_components(RenewableDispatch, sys_DA))
 for i in 1:92
     cost_curve = zero(CostCurve)
@@ -86,17 +88,17 @@ for i in 1:92
 end
 
 # building hydro
-hydro_DA_RT_gens = []
+#hydro_DA_RT_gens = []
 for i in 1:43
 	local num = lpad(i, 3, '0')
     local bus_hydro = parse(Int, hydro_gens[i, "bus of connection"][4:6])
     local hydro = HydroDispatch(;
         name = "hydro$num",
         available = true,
-        bus = buses_DA[bus_hydro],
+        bus = get_bus(sys_DA, bus_hydro),
         active_power = 0.0,
         reactive_power = 0,
-        rating = 0,
+        rating = 0.0,
         prime_mover_type = PrimeMovers.HA,
         active_power_limits = (min = hydro_gens[i, "Min Stable Level (MW)"]/100, max = hydro_gens[i, "Max Capacity (MW)"]/100),
         reactive_power_limits = (min = 0.0, max = 0.0),
@@ -106,11 +108,12 @@ for i in 1:43
         operation_cost = HydroGenerationCost(nothing)
         )
     add_component!(sys_DA, hydro)
-	push!(hydro_DA_RT_gens, hydro)
+	#push!(hydro_DA_RT_gens, hydro)
 	add_time_series!(sys_DA, hydro, hydro_DA_RT_TS[i])
 end
 
 ## Making HydroGenerationCost 
+
 hydrogens = collect(get_components(HydroDispatch, sys_DA))
 for i in 1:43 
     cost_curve = LinearCurve(0.0)
@@ -121,9 +124,7 @@ for i in 1:43
     set_operation_cost!(hydrogens[i], cost_hydro)
 end
 
-
 # building thermal gens ==========================================================================
-bus_thermal = []
 
 # Creating prime mover dict
 thermal_prime_mover_type = Dict{String, PrimeMovers}(
@@ -171,6 +172,7 @@ for i in 1:192
         push!(fuel, ThermalFuels.NATURAL_GAS)
     end
 end
+
 # parsing rating from gen.csv 
 ratings = []
 for i in 1:192
@@ -196,6 +198,7 @@ heat_rates = hcat(
   heat_rate4,
   heat_rate5
 )
+
 # Creating array of load points
 load_points = hcat(
     thermal_gens[:, "Min Stable Level (MW)"],
@@ -205,6 +208,7 @@ load_points = hcat(
     thermal_gens[:, "Load Point Band 4 (MW)"],
     thermal_gens[:, "Load Point Band 5 (MW)"]
 )
+
 heat_rate_base = (thermal_gens[:, "Heat Rate Base (MMBTU/hr)"])/1000
 
 # I am assuming that the intervals are defined at the end and beginning by the
@@ -283,7 +287,7 @@ for i in 1:192
             name = thermal_gens[i, "Generator Name"],
             available = true,
             status = true,
-            bus = buses_DA[bus_thermal],
+            bus = get_bus(sys_DA, bus_thermal),
             active_power = 0.0,
             reactive_power = 0.0,
             rating = ratings[i],
@@ -299,17 +303,3 @@ for i in 1:192
     add_component!(sys_DA, thermal)
     set_operation_cost!(thermal, thermal_cost_function[i])
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
