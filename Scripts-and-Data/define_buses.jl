@@ -14,6 +14,13 @@ MIN_VOLT_COL = "Voltage-Min (pu)"
 MAX_VOLT_COL = "Voltage-Max (pu)"
 BASE_VOLT_COL = "Base Voltage kV"
 
+# Creating regions and adding them to system
+
+for i in 1:3
+    area = Area("R$i")
+    add_component!(sys_DA, area)
+end
+
 # Defining all the buses 
 
 for row in eachrow(bus_params)
@@ -34,6 +41,7 @@ for row in eachrow(bus_params)
         magnitude = 1.0,
         voltage_limits = (min = min_volt, max = max_volt),
         base_voltage = base_volt,
+        area = get_component(Area, sys_DA, row["Area"])
     )
     add_component!(sys_DA, bus)
 end

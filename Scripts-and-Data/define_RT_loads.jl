@@ -8,13 +8,9 @@ using InfrastructureSystems
 
 sys_RT = deepcopy(sys_DA)
 
-# Defining all the loads and adding them to lists
 # adding loads and time series into system
 
 partfact = sort!(CSV.read("Scripts-and-Data/partfact.csv", DataFrame));
-loads_R1_RT = []
-loads_R2_RT = []
-loads_R3_RT = []
 
 for row in eachrow(partfact)
     num = lpad(rownumber(row), 3, '0')
@@ -32,23 +28,20 @@ for row in eachrow(partfact)
         max_reactive_power = 0.0,
     );
     add_component!(sys_RT, load);
-    if i == 1
-        push!(loads_R1_RT, load)
-    elseif i == 2
-        push!(loads_R2_RT, load)
-    else i == 3
-        push!(loads_R3_RT, load)
-    end
 end
 
-loads_RT = [loads_R1_RT, loads_R2_RT, loads_R3_RT]
-
-for i in 1:3
-    associations = (
-    InfrastructureSystems.TimeSeriesAssociation(
-        load,
-        load_RT_TS[i],)
-        for load in loads_RT[i]
-    );
-    bulk_add_time_series!(sys_RT, associations);
+for i in 1:3 
+    local loaddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Load/LoadR$(i)RT.csv", DataFrame)
+    local load_array = TimeArray(timestamps, (loaddf[:, 2]./maximum(loaddf[:, 2])))
+    local load_TS = SingleTimeSeries(;
+           name = "max_active_power",
+           data = load_array,
+           scaling_factor_multiplier = get_max_active_power, #assumption?
+       );  
+    region = get_component(Area, sys_RT, "R$i")
+    begin_time_series_update(sys_RT) do
+        for component in get_components_in_aggregation_topology(PowerLoad, sys_RT, region)
+            add_time_series!(sys_RT, component, load_TS)
+        end
+    end
 end
