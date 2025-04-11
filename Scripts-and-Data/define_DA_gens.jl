@@ -1,127 +1,97 @@
-#!/usr/bin/env julia
-
 using PowerSystems
 using CSV
 using DataFrames
+using InfrastructureSystems
+const IS = InfrastructureSystems
 
-# definiting all the generators and adding them to appropriate buses
+#=
+In this script, we're building all the renewable and thermal generators. The
+first for loop and conditional is building RenewableDispatch and HydroDispatch
+by isolating the rows of gen_params that describe those generator types.
+I would've used IS.deserialize for the renewable gens, but in gen.csv, the
+solar prime mover type is "Pve" instead of "PVe".
+Then after that, their cost functions are attached. After that is when we
+build the ThermalStandards and their cost functions.
+=#
 
-# parsing all ThermalStandard gens 
+# creating dataframe for gens paramaters, and variables for column names 
 
 gen_params = CSV.read("Scripts-and-Data/gen.csv", DataFrame)
-thermal_gens = DataFrame()
-hydro_gens = DataFrame()
-solar_gens = DataFrame()
-wind_gens = DataFrame()
+
+TYPE = "type"
+PRIME = "PrimeMoveType"
+NAME = "Generator Name"
+BUS = "bus of connection"
+MAX_CAP = "Max Capacity (MW)"
+MIN_STABLE = "Min Stable Level (MW)"
+RAMP_UP = "Max Ramp Up (MW/min)"
+RAMP_DOWN = "Max Ramp Down (MW/min)"
+UP_TIME = "Min Up Time (h)"
+DOWN_TIME = "Min Down Time (h)"
+
+# building Hydro and Renewable Generators
 
 for row in eachrow(gen_params)
-    if row["type"] == "Thermal "
-        push!(thermal_gens, row, promote=true)
-    elseif row["type"] == "Hydro"
-        push!(hydro_gens, row, promote=true)
-    elseif row["type"] == "Solar"
-        push!(solar_gens, row, promote=true)
-    elseif row["type"] == "Wind"
-        push!(wind_gens, row, promote=true)
+    if row[TYPE] == "Solar" || row[TYPE] == "Wind"
+        if row[TYPE] == "Solar"
+            prime = PrimeMovers.PVe
+        elseif row[TYPE] == "Wind"
+            prime = PrimeMovers.WT
+        end
+        local bus_renew = get_bus(sys_DA, row[BUS])
+        local renew = RenewableDispatch(;
+            name = row[NAME],
+            available = true,
+            bus = bus_renew,
+            active_power = 0.0,
+            reactive_power = 0.0,
+            rating = row[MAX_CAP] / system_base_power,
+            prime_mover_type = prime,
+            reactive_power_limits = (min = 0.0, max = 0.0),
+            power_factor = 1.0,
+            operation_cost = RenewableGenerationCost(nothing),
+            base_power = system_base_power,
+        )
+        add_component!(sys_DA, renew)
+    elseif row[TYPE] == "Hydro"
+        local bus_hydro = get_bus(sys_DA, row[BUS])
+        local hydro = HydroDispatch(;
+            name = row[NAME],
+            available = true,
+            bus = bus_hydro,
+            active_power = 0.0,
+            reactive_power = 0.0,
+            rating = 0.0,
+            prime_mover_type = PrimeMovers.HA,
+            active_power_limits = (min = row[MIN_STABLE]/system_base_power, max = row[MAX_CAP]/system_base_power),
+            reactive_power_limits = (min = 0.0, max = 0.0),
+            ramp_limits = (up = row[RAMP_UP]/system_base_power, down = row[RAMP_DOWN]/system_base_power),
+            time_limits = (up = row[UP_TIME], down = row[DOWN_TIME]),
+            base_power = system_base_power,
+            operation_cost = HydroGenerationCost(nothing),
+        )
+        add_component!(sys_DA, hydro)
     end
 end
 
-# building the solar gens
-#solar_DA_gens = []
-for i in 1:75
-	num = lpad(i, 3, '0')
-    local bus_solar = parse(Int, solar_gens[i, "bus of connection"][4:6])
-    local rate = gen_params[i, "Max Capacity (MW)"]
-    local solar = RenewableDispatch(;
-        name = "solar$num",
-        available = true,
-        bus = get_bus(sys_DA, bus_solar),
-        active_power = 0.0,
-        reactive_power = 0.0,
-        rating = rate,
-        prime_mover_type = PrimeMovers.PVe,
-        reactive_power_limits = (min = 0.0, max = 0.0),
-        power_factor = 1.0,
-        operation_cost = RenewableGenerationCost(nothing),
-        base_power = 100
-        )
-    add_component!(sys_DA, solar)
-	add_time_series!(sys_DA, solar, solar_DA_TS[i])
-	#push!(solar_DA_gens, solar)
-end
+# Making RenewableGenerationCost functions assume no VOM cost and no curtailment cost
 
-# building the wind gens
-#wind_DA_gens = []
-for i in 1:17
-	num = lpad(i, 3, '0')
-    local bus_wind = parse(Int, wind_gens[i, "bus of connection"][4:6])
-    rate = gen_params[i, "Max Capacity (MW)"]
-    local wind = RenewableDispatch(;
-        name = "wind$num",
-        available = true,
-        bus = get_bus(sys_DA, bus_wind),
-        active_power = 0.0,
-        reactive_power = 0.0,
-        rating = rate,
-        prime_mover_type = PrimeMovers.WT,
-        reactive_power_limits = (min = 0.0, max = 0.0),
-        power_factor = 1.0,
-        operation_cost = RenewableGenerationCost(nothing),
-        base_power = 100
-        )
-    add_component!(sys_DA, wind)
-	add_time_series!(sys_DA, wind, wind_DA_TS[i])
-	#push!(wind_DA_gens, wind)
-end
-
-## Making RenewableGenerationCost functions
-# assume no VOM cost and no curtailment cost 
-
-ren_gens = collect(get_components(RenewableDispatch, sys_DA))
-for i in 1:92
+for renew in collect(get_components(RenewableDispatch, sys_DA))
     cost_curve = zero(CostCurve)
-    value_curve = LinearCurve(0, .275)
-    curtailment_cost = CostCurve(value_curve)
-    cost_ren = RenewableGenerationCost(cost_curve)
-    ren_gen = ren_gens[i]
-    set_operation_cost!(ren_gen, cost_ren)
+    #value_curve = LinearCurve(0, 0.275)
+    #curtailment_cost = CostCurve(value_curve)
+    ren_cost = RenewableGenerationCost(cost_curve)
+    set_operation_cost!(renew, ren_cost)
 end
 
-# building hydro
-#hydro_DA_RT_gens = []
-for i in 1:43
-	local num = lpad(i, 3, '0')
-    local bus_hydro = parse(Int, hydro_gens[i, "bus of connection"][4:6])
-    local hydro = HydroDispatch(;
-        name = "hydro$num",
-        available = true,
-        bus = get_bus(sys_DA, bus_hydro),
-        active_power = 0.0,
-        reactive_power = 0,
-        rating = 0.0,
-        prime_mover_type = PrimeMovers.HA,
-        active_power_limits = (min = hydro_gens[i, "Min Stable Level (MW)"]/100, max = hydro_gens[i, "Max Capacity (MW)"]/100),
-        reactive_power_limits = (min = 0.0, max = 0.0),
-        ramp_limits = (up = hydro_gens[i, "Max Ramp Up (MW/min)"], down = hydro_gens[i, "Max Ramp Down (MW/min)"]),
-        time_limits = (up = hydro_gens[i,"Min Up Time (h)" ], down = hydro_gens[i, "Min Down Time (h)"]),
-        base_power = 100,
-        operation_cost = HydroGenerationCost(nothing)
-        )
-    add_component!(sys_DA, hydro)
-	#push!(hydro_DA_RT_gens, hydro)
-	add_time_series!(sys_DA, hydro, hydro_DA_RT_TS[i])
-end
+# Making HydroGenerationCost 
 
-## Making HydroGenerationCost 
-
-hydrogens = collect(get_components(HydroDispatch, sys_DA))
-for i in 1:43 
+for hydros in collect(get_components(HydroDispatch, sys_DA))
     cost_curve = LinearCurve(0.0)
     value_curve = CostCurve(cost_curve)
     fixed = 0.0
-    cost_hydro = HydroGenerationCost(;variable = value_curve, fixed)
-    hydrogen = hydrogens[i]
-    set_operation_cost!(hydrogens[i], cost_hydro)
+    hydro_cost = HydroGenerationCost(;variable = value_curve, fixed)
+    set_operation_cost!(hydros, hydro_cost)
 end
 
 # building thermal gens ==========================================================================

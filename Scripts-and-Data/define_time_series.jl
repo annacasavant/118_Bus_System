@@ -1,26 +1,43 @@
-#!/usr/bin/env julia
-
 using PowerSystems
 using CSV
 using DataFrames
 using Dates
 using TimeSeries
 
-# Time Stamps: 
-# since csv is messed up, assuming values go with time in order, not how presented
-# changed year to 2023 so data skips leap day and ends on 1/1/24 of next year 
-# year is arbitrary since data is synthetic anyways
+#=
+Time Stamps: 
+since csv is messed up, assuming values go with time in order, not how presented
+changed year to 2023 so data skips leap day and ends on 1/1/24 of next year 
+year is arbitrary since data is synthetic anyways.
+
+Gen Data:
+The csv was messed up in odd ways so had to hard code some edits to it to make
+a dictionary that will be usable down the line. I only needed the gen name and
+max capacity columns, and the entries go from rows go from 2 to 328, because
+the first row of the csv has the column names, and after row 328, the entries
+are null.
+
+Hydro Time Series:
+time series created for 16-35, 40-43
+1-15, 36-39 monthly budget modified to get hourly
+1-15 are dispatchable, rest are non-dispatchable
+=#
+
+# Establishing time series resolution and length
 
 resolution = Dates.Hour(1);
 timestamps = range(DateTime("2023-01-01T00:00:00"); step = resolution, length = 8784);
-gendata = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
+
+# Loading in and parsing generator names and max capacities
+
+gencsv = CSV.read("Scripts-and-Data/Generators.csv", DataFrame)
+
+gendata = Dict{String, Float64}()
+for row in eachrow(gencsv[2:328, :])
+    gendata[row[1]] = parse(Float64, replace(row[5], ',' => '.'))
+end
 
 # Hydro RT and DA ==========================================================================
-hydro_DA_RT_TS = []
-
-#time series created for 16-35, 40-43
-#1-15, 36-39 monthly budget modified to get hourly
-#1-15 are dispatchable, rest are non-dispatchable
 
 hydro1_15 = sort(CSV.read("Scripts-and-Data/TimeSeries/Hydro/118-hydro.csv", DataFrame), [:3])
 hydro36_39 = CSV.read("Scripts-and-Data/TimeSeries/Hydro/Hydro_nondispatchable.csv", DataFrame)[21:68, 1:8]
@@ -42,7 +59,7 @@ for row in eachrow(hydro36_39)
 	push!(hydro_num, row[1])
 end
 
-hydrobg = sort(DataFrame(Hydro=hydro_num, Month=months, Value=values), [:1, :2])
+hydrobg = sort(DataFrame(Hydro=hydro_num, Month=months, Value=values), [:1, :2]);
 
 #constructing time series from budgets
 time_series_list = []
@@ -61,96 +78,99 @@ for i in 1:19
 	push!(time_series_list, (time_series./maximum(time_series)))
 end
 
-for i in 1:43
+for hydro in collect(get_components(HydroDispatch, sys_DA))
+    i = parse(Int, get_name(hydro)[7:end])
 	if i<=15
-		local hydro_array = TimeArray(timestamps, time_series_list[i])
-		local hydro_TS = SingleTimeSeries(;
+		hydro_array = TimeArray(timestamps, time_series_list[i])
+		hydro_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = hydro_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
+		   scaling_factor_multiplier = get_max_active_power,
        	);
-		push!(hydro_DA_RT_TS, hydro_TS);
 	elseif 36<=i<=39
-		local hydro_array = TimeArray(timestamps, time_series_list[i-20])
-		local hydro_TS = SingleTimeSeries(;
+		hydro_array = TimeArray(timestamps, time_series_list[i-20])
+		hydro_TS = SingleTimeSeries(;
            name = "max_active_power",
            data = hydro_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
+		   scaling_factor_multiplier = get_max_active_power,
        	);
-		push!(hydro_DA_RT_TS, hydro_TS);
 	else
 		local hydrodf = CSV.read("Scripts-and-Data/TimeSeries/Hydro/Hydro$(i).csv", DataFrame)
 		deleteat!(hydrodf, 1417:1440)
-		local hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./maximum(hydrodf[:, 2])))
-		local hydro_TS = SingleTimeSeries(;
+		hydro_array = TimeArray(timestamps, (hydrodf[:, 2]./maximum(hydrodf[:, 2])))
+		hydro_TS = SingleTimeSeries(;
           name = "max_active_power",
           data = hydro_array,
-		  scaling_factor_multiplier = get_max_active_power, #assumption?
+		  scaling_factor_multiplier = get_max_active_power,
        );
-		push!(hydro_DA_RT_TS, hydro_TS);
 	end
+    add_time_series!(sys_DA, hydro, hydro_TS)
 end
 
 # Real Time: ====================================================================================
 
-# solar: -------------------------
-solar_RT_TS = []
+solar_RT_TS = DataFrame();
 
-for i in 1:75
-	local solardf = CSV.read("Scripts-and-Data/TimeSeries/RT/Solar/Solar$(i)RT.csv", DataFrame)
-	local norm = parse(Float64, replace(gendata[i+223,5], ',' => '.'))
-	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100)
-	local solar_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = solar_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
-       );
-	push!(solar_RT_TS, solar_TS);
+for file in readdir("Scripts-and-Data/TimeSeries/RT/Solar/", join=true)
+    num = lpad(file[43:end-6], 2, '0')
+    data = CSV.read(file, DataFrame)[:, 2]
+    solar_RT_TS[:, "Solar $(num)"] = data
 end
 
-# wind: --------------------------
-wind_RT_TS = []
+wind_RT_TS = DataFrame();
 
-for i in 1:17
-	local winddf = CSV.read("Scripts-and-Data/TimeSeries/RT/Wind/Wind$(i)RT.csv", DataFrame)
-	local norm = parse(Float64, replace(gendata[i+311,5], ',' => '.'))
-	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100)
-	local wind_TS = SingleTimeSeries(;
+for file in readdir("Scripts-and-Data/TimeSeries/RT/Wind/", join=true)
+    num = lpad(file[41:end-6], 2, '0')
+    data = CSV.read(file, DataFrame)[:, 2]
+    wind_RT_TS[:, "Wind $(num)"] = data
+end
+
+for renew in collect(get_components(RenewableDispatch, sys_RT))
+    name = get_name(renew)
+	norm = gendata[name]
+    if get_prime_mover_type(renew) == PrimeMovers.PVe
+        renew_array = TimeArray(timestamps, (solar_RT_TS[:, name]./norm))
+    elseif get_prime_mover_type(renew) == PrimeMovers.WT
+        renew_array = TimeArray(timestamps, (wind_RT_TS[:, name]./norm))
+    end
+	local renew_TS = SingleTimeSeries(;
            name = "max_active_power",
-           data = wind_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
+           data = renew_array,
+		   scaling_factor_multiplier = get_max_active_power,
        );
-	push!(wind_RT_TS, wind_TS);
+    add_time_series!(sys_RT, renew, renew_TS)
 end
 
 # Day Ahead: ===================================================================================
 
-# solar: -------------------------
-solar_DA_TS = []
+solar_DA_TS = DataFrame();
 
-for i in 1:75
-	local solardf = CSV.read("Scripts-and-Data/TimeSeries/DA/Solar/Solar$(i)DA.csv", DataFrame)
-	local norm = parse(Float64, replace(gendata[i+223,5], ',' => '.'))
-	local solar_array = TimeArray(timestamps, (solardf[:, 2]./norm)/100)
-	local solar_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = solar_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
-       );
-	push!(solar_DA_TS, solar_TS);
+for file in readdir("Scripts-and-Data/TimeSeries/DA/Solar/", join=true)
+    num = lpad(file[43:end-6], 2, '0')
+    data = CSV.read(file, DataFrame)[:, 2]
+    solar_DA_TS[:, "Solar $(num)"] = data
 end
 
-# wind: --------------------------
-wind_DA_TS = []
+wind_DA_TS = DataFrame();
 
-for i in 1:17
-	local winddf = CSV.read("Scripts-and-Data/TimeSeries/DA/Wind/Wind$(i)DA.csv", DataFrame)
-	local norm = parse(Float64, replace(gendata[i+311,5], ',' => '.'))
-	local wind_array = TimeArray(timestamps, (winddf[:, 2]./norm)/100)
-	local wind_TS = SingleTimeSeries(;
+for file in readdir("Scripts-and-Data/TimeSeries/DA/Wind/", join=true)
+    num = lpad(file[41:end-6], 2, '0')
+    data = CSV.read(file, DataFrame)[:, 2]
+    wind_DA_TS[:, "Wind $(num)"] = data
+end
+
+for renew in collect(get_components(RenewableDispatch, sys_DA))
+    name = get_name(renew)
+	norm = gendata[name]
+    if get_prime_mover_type(renew) == PrimeMovers.PVe
+        renew_array = TimeArray(timestamps, (solar_DA_TS[:, name]./norm))
+    elseif get_prime_mover_type(renew) == PrimeMovers.WT
+        renew_array = TimeArray(timestamps, (wind_DA_TS[:, name]./norm))
+    end
+	local renew_TS = SingleTimeSeries(;
            name = "max_active_power",
-           data = wind_array,
-		   scaling_factor_multiplier = get_max_active_power, #assumption?
+           data = renew_array,
+		   scaling_factor_multiplier = get_max_active_power,
        );
-	push!(wind_DA_TS, wind_TS);
+    add_time_series!(sys_DA, renew, renew_TS)
 end

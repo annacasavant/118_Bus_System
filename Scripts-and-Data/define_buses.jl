@@ -2,46 +2,56 @@ using PowerSystems
 using CSV
 using DataFrames
 
-# defining DA and RT systems
-# reading in bus data to a dataframe
+#=
+This script establishes the base system, labeled sys_DA, and creates and adds
+the buses and regions to the system. These systems, sys_DA and sys_RT, are
+exactly the same until time series are introduced. Thus, we build one system
+and create sys_RT via deepcopy once sys_DA and sys_RT diverge. Naming buses now
+with convention "bus001" because other files use this naming convention.
+Setting angle equal to 0.0 in the ACBus constructor because its missing from
+our data.
+=#
 
-sys_DA= System(100.0) #assuming base power 100MVA per-unitization
+# defining base system
+
+system_base_power = 100.0 # assuming base power 100MVA per-unitization
+sys_DA = System(system_base_power)
+
+# reading in bus data to a dataframe and defining column names as variables
+
 bus_params = CSV.read("Scripts-and-Data/Buses.csv", DataFrame)
+    
+BUS_NUM = "Number"
+MIN_VOLT = "Voltage-Min (pu)"
+MAX_VOLT = "Voltage-Max (pu)"
+BASE_VOLT = "Base Voltage kV"
+REGION = "Area"
 
-# defining column names as variables
-BUS_NUM_COL = "Number"
-MIN_VOLT_COL = "Voltage-Min (pu)"
-MAX_VOLT_COL = "Voltage-Max (pu)"
-BASE_VOLT_COL = "Base Voltage kV"
+# Creating regions and buses, and adding them to system
 
-# Creating regions and adding them to system
+regions = unique(bus_params[:, REGION])
 
-for i in 1:3
-    area = Area("R$i")
+for reg in regions
+    area = Area(reg)
     add_component!(sys_DA, area)
 end
 
-# Defining all the buses 
-
 for row in eachrow(bus_params)
-    num = lpad(row[BUS_NUM_COL], 3, '0')
-    min_volt = row[MIN_VOLT_COL]
-    max_volt = row[MAX_VOLT_COL]
-    base_volt = row[BASE_VOLT_COL]
-    if row[BUS_NUM_COL] == 69
+    num = lpad(row[BUS_NUM], 3, '0')
+    if row[BUS_NUM] == 69
         type = ACBusTypes.REF
     else
         type = ACBusTypes.PQ
     end
     local bus = ACBus(;
-        number = row[BUS_NUM_COL],
-        name = "bus$num",
+        number = row[BUS_NUM],
+        name = "bus$(num)",
         bustype = type,
         angle = 0.0,
         magnitude = 1.0,
-        voltage_limits = (min = min_volt, max = max_volt),
-        base_voltage = base_volt,
-        area = get_component(Area, sys_DA, row["Area"])
+        voltage_limits = (min = row[MIN_VOLT], max = row[MAX_VOLT]),
+        base_voltage = row[BASE_VOLT],
+        area = get_component(Area, sys_DA, row[REGION])
     )
     add_component!(sys_DA, bus)
 end
