@@ -1,15 +1,20 @@
 using PowerSystems
 using CSV
 using DataFrames
+using InfrastructureSystems
+const IS = InfrastructureSystems
+using Dates
+using TimeSeries
 
 #=
-This script establishes the base system, labeled sys_DA, and creates and adds
-the buses and regions to the system. These systems, sys_DA and sys_RT, are
-exactly the same until time series are introduced. Thus, we build one system
-and create sys_RT via deepcopy once sys_DA and sys_RT diverge. Naming buses now
-with convention "bus001" because other files use this naming convention.
-Setting angle equal to 0.0 in the ACBus constructor because its missing from
-our data.
+Estalishing System:
+This script establishes the base system. We create the system, sys_DA, and
+deepcopy it to make sys_RT once time series are added. 
+
+Notes on Buses:
+Naming buses now with convention "bus001" because other files use this naming
+convention.  Setting angle equal to 0.0 in the ACBus constructor because its
+missing from our data.
 =#
 
 # defining base system

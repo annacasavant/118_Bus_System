@@ -1,9 +1,3 @@
-using PowerSystems
-using CSV
-using DataFrames
-using Dates
-using TimeSeries
-
 #=
 Time Stamps: 
 since csv is messed up, assuming values go with time in order, not how presented
@@ -21,7 +15,13 @@ Hydro Time Series:
 time series created for 16-35, 40-43
 1-15, 36-39 monthly budget modified to get hourly
 1-15 are dispatchable, rest are non-dispatchable
+
+Deepcopy:
+If Real Time system is built, so the variable build_RT == "YES", then deepcopy
+is made before DA time series added to system.
 =#
+
+# Files and Variables: =================================================================================
 
 # Establishing time series resolution and length
 
@@ -37,7 +37,7 @@ for row in eachrow(gencsv[2:328, :])
     gendata[row[1]] = parse(Float64, replace(row[5], ',' => '.'))
 end
 
-# Hydro RT and DA ==========================================================================
+# Hydro Time Series: ===================================================================================
 
 hydro1_15 = sort(CSV.read("Scripts-and-Data/TimeSeries/Hydro/118-hydro.csv", DataFrame), [:3])
 hydro36_39 = CSV.read("Scripts-and-Data/TimeSeries/Hydro/Hydro_nondispatchable.csv", DataFrame)[21:68, 1:8]
@@ -61,7 +61,8 @@ end
 
 hydrobg = sort(DataFrame(Hydro=hydro_num, Month=months, Value=values), [:1, :2]);
 
-#constructing time series from budgets
+# constructing time series from budgets
+
 time_series_list = []
 daysofmonth = [31,28,31,30,31,30,31,31,30,31,30,32]
 
@@ -107,70 +108,78 @@ for hydro in collect(get_components(HydroDispatch, sys_DA))
     add_time_series!(sys_DA, hydro, hydro_TS)
 end
 
-# Real Time: ====================================================================================
+# Solar and Wind RT Time Series: =======================================================================
 
-solar_RT_TS = DataFrame();
+if build_RT == "YES"
 
-for file in readdir("Scripts-and-Data/TimeSeries/RT/Solar/", join=true)
-    num = lpad(file[43:end-6], 2, '0')
-    data = CSV.read(file, DataFrame)[:, 2]
-    solar_RT_TS[:, "Solar $(num)"] = data
-end
+    global sys_RT = deepcopy(sys_DA)
 
-wind_RT_TS = DataFrame();
+    solar_RT_TS = DataFrame();
 
-for file in readdir("Scripts-and-Data/TimeSeries/RT/Wind/", join=true)
-    num = lpad(file[41:end-6], 2, '0')
-    data = CSV.read(file, DataFrame)[:, 2]
-    wind_RT_TS[:, "Wind $(num)"] = data
-end
-
-for renew in collect(get_components(RenewableDispatch, sys_RT))
-    name = get_name(renew)
-	norm = gendata[name]
-    if get_prime_mover_type(renew) == PrimeMovers.PVe
-        renew_array = TimeArray(timestamps, (solar_RT_TS[:, name]./norm))
-    elseif get_prime_mover_type(renew) == PrimeMovers.WT
-        renew_array = TimeArray(timestamps, (wind_RT_TS[:, name]./norm))
+    for file in readdir("Scripts-and-Data/TimeSeries/RT/Solar/", join=true)
+        num = lpad(file[43:end-6], 2, '0')
+        data = CSV.read(file, DataFrame)[:, 2]
+        solar_RT_TS[:, "Solar $(num)"] = data
     end
-	local renew_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = renew_array,
-		   scaling_factor_multiplier = get_max_active_power,
-       );
-    add_time_series!(sys_RT, renew, renew_TS)
-end
 
-# Day Ahead: ===================================================================================
+    wind_RT_TS = DataFrame();
 
-solar_DA_TS = DataFrame();
-
-for file in readdir("Scripts-and-Data/TimeSeries/DA/Solar/", join=true)
-    num = lpad(file[43:end-6], 2, '0')
-    data = CSV.read(file, DataFrame)[:, 2]
-    solar_DA_TS[:, "Solar $(num)"] = data
-end
-
-wind_DA_TS = DataFrame();
-
-for file in readdir("Scripts-and-Data/TimeSeries/DA/Wind/", join=true)
-    num = lpad(file[41:end-6], 2, '0')
-    data = CSV.read(file, DataFrame)[:, 2]
-    wind_DA_TS[:, "Wind $(num)"] = data
-end
-
-for renew in collect(get_components(RenewableDispatch, sys_DA))
-    name = get_name(renew)
-	norm = gendata[name]
-    if get_prime_mover_type(renew) == PrimeMovers.PVe
-        renew_array = TimeArray(timestamps, (solar_DA_TS[:, name]./norm))
-    elseif get_prime_mover_type(renew) == PrimeMovers.WT
-        renew_array = TimeArray(timestamps, (wind_DA_TS[:, name]./norm))
+    for file in readdir("Scripts-and-Data/TimeSeries/RT/Wind/", join=true)
+        num = lpad(file[41:end-6], 2, '0')
+        data = CSV.read(file, DataFrame)[:, 2]
+        wind_RT_TS[:, "Wind $(num)"] = data
     end
-	local renew_TS = SingleTimeSeries(;
-           name = "max_active_power",
-           data = renew_array,
-		   scaling_factor_multiplier = get_max_active_power,
-       );
-    add_time_series!(sys_DA, renew, renew_TS)
+
+    for renew in collect(get_components(RenewableDispatch, sys_RT))
+        name = get_name(renew)
+	    norm = gendata[name]
+        if get_prime_mover_type(renew) == PrimeMovers.PVe
+            renew_array = TimeArray(timestamps, (solar_RT_TS[:, name]./norm))
+        elseif get_prime_mover_type(renew) == PrimeMovers.WT
+            renew_array = TimeArray(timestamps, (wind_RT_TS[:, name]./norm))
+        end
+	    local renew_TS = SingleTimeSeries(;
+            name = "max_active_power",
+            data = renew_array,
+		    scaling_factor_multiplier = get_max_active_power,
+        );
+        add_time_series!(sys_RT, renew, renew_TS)
+    end
+end
+
+# Solar and Wind DA Time Series: =======================================================================
+
+if build_DA == "YES"
+
+    solar_DA_TS = DataFrame();
+
+    for file in readdir("Scripts-and-Data/TimeSeries/DA/Solar/", join=true)
+        num = lpad(file[43:end-6], 2, '0')
+        data = CSV.read(file, DataFrame)[:, 2]
+        solar_DA_TS[:, "Solar $(num)"] = data
+    end
+
+    wind_DA_TS = DataFrame();
+
+    for file in readdir("Scripts-and-Data/TimeSeries/DA/Wind/", join=true)
+        num = lpad(file[41:end-6], 2, '0')
+        data = CSV.read(file, DataFrame)[:, 2]
+        wind_DA_TS[:, "Wind $(num)"] = data
+    end
+
+    for renew in collect(get_components(RenewableDispatch, sys_DA))
+        name = get_name(renew)
+	    norm = gendata[name]
+        if get_prime_mover_type(renew) == PrimeMovers.PVe
+            renew_array = TimeArray(timestamps, (solar_DA_TS[:, name]./norm))
+        elseif get_prime_mover_type(renew) == PrimeMovers.WT
+            renew_array = TimeArray(timestamps, (wind_DA_TS[:, name]./norm))
+        end
+	    local renew_TS = SingleTimeSeries(;
+            name = "max_active_power",
+            data = renew_array,
+		    scaling_factor_multiplier = get_max_active_power,
+        );
+        add_time_series!(sys_DA, renew, renew_TS)
+    end
 end

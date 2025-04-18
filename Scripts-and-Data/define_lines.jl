@@ -1,15 +1,15 @@
-using PowerSystems
-using CSV
-using DataFrames
-
 #=
 This script builds the branches of the system. We build either a line, if the
 connecting buses have the same base voltage, or a transformer2w if they have 
-different base voltages. Lines.csv contains Min Flow data that we aren't using
+different base voltages. Lines.csv contains Min Flow data that we aren't using 
 as the Line or Transformer2W constructors don't require them. "Bus from" and 
-"Bus to" columns formatted as "bus001", so in the for loop building the
-branches, we have to isolate that number, hence the [4:6]. Other hard coded 
-variables are because our data didn't specify them.
+"Bus to" columns formatted as "bus001", to match naming convention of buses 
+used in previous script. Other hard coded variables are because our data didn't 
+specify them.
+
+Because raw data does not have rating, rating is the max flow, per-unitized
+by the system base power. And since branches don't have (device) base power
+variable, assume it would be the system base power.
 =#
 
 # reading in line data to a dataframe and defining column names as variables

@@ -6,18 +6,13 @@ using InfrastructureSystems
 using TimeSeries
 
 #=
-Deepcopying sys_DA to create sys_RT. Defining all the loads, which are located
-in three regions. Each region has one unique time series, and every load in
-each region is assigned its region's respective time series. Original time
-series files have first column timestamps, second column values, but here I'm
-creating one dataframe from each of the files' value columns. To name loads,
-using convention "load001", where the number matches the number of the bus
-attached to the load.  
+Defining all the loads, which are located in three regions. Each region has one
+unique time series, and every load in each region is assigned its region's
+respective time series. Original time series files have first column
+timestamps, second column values, but here I'm creating one dataframe from each
+of the files' value columns. To name loads, using convention "load001", where
+the number matches the number of the bus attached to the load.  
 =#
-
-# duplicate system
-
-sys_RT = deepcopy(sys_DA)
 
 # creating dataframes for load parameters and time series, and column name variables
 
@@ -44,7 +39,7 @@ for row in eachrow(load_params)
         active_power = 0.0, # per-unitized by device base_power
         reactive_power = 0.0, # per-unitized by device base_power
         base_power = system_base_power, # MVA, for loads match system
-        max_active_power = (max) * (row[FACT]),
+        max_active_power = (max) * (row[FACT]) / system_base_power,
         max_reactive_power = 0.0,
     );
     add_component!(sys_RT, load);

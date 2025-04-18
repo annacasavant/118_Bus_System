@@ -1,10 +1,9 @@
+build_DA = "YES"
 build_RT = "YES"
-build_DA = "NO"
 
 include("Scripts-and-Data/define_buses.jl");
 include("Scripts-and-Data/define_lines.jl");
 include("Scripts-and-Data/define_gens.jl");
 include("Scripts-and-Data/define_time_series.jl");
+include("Scripts-and-Data/define_DA_loads.jl");
 include("Scripts-and-Data/define_RT_loads.jl");
-
-sys_RT
