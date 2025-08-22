@@ -51,6 +51,7 @@ for row in eachrow(bus_params)
     local bus = ACBus(;
         number = row[BUS_NUM],
         name = "bus$(num)",
+        available = true,
         bustype = type,
         angle = 0.0,
         magnitude = 1.0,

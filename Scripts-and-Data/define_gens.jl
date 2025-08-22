@@ -162,7 +162,7 @@ load_points = Dict()
 for row in eachrow(thermal_gens)
     if row[PRIME] == "OT"
         fuel_cost_dict[row[PRIME]] = bm_price
-        fuel_type_dict[row[PRIME]] = ThermalFuels.AG_BIPRODUCT
+        fuel_type_dict[row[PRIME]] = ThermalFuels.AG_BYPRODUCT
     elseif row[PRIME] == "CC" || startswith(row[NAME], "CT NG") || startswith(row[NAME], "ICE NG") || startswith(row[NAME], "ST NG") || startswith(row[NAME], "ST Other 02")
         fuel_cost_dict[row[PRIME]] = ng_price
         fuel_type_dict[row[PRIME]] = ThermalFuels.NATURAL_GAS

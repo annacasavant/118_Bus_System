@@ -53,6 +53,7 @@ for row in eachrow(line_params)
             x = row[REACT],
             primary_shunt = 0.0,
             rating = row[MAX_FLOW]/system_base_power,
+            base_power = system_base_power,
         );
         add_component!(sys_DA, tline)
     end
